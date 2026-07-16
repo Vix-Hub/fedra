@@ -17,6 +17,9 @@ class EdbTrackFitter : public TNamed {
  
  private:
   int   eNsegMax;        // max number of segments (for arrays allocation)
+  float eThetaRef;   // reference angle at which PFromTheta(eThetaRef) == ePdef
+  float ePMin;       // lower clamp for the proxy momentum
+  float ePMax;       // upper clamp for the proxy momentum
 
  public:
   float eX0;             // rad length of the media [microns]
@@ -45,6 +48,11 @@ class EdbTrackFitter : public TNamed {
   bool           SplitTrack( EdbTrackP &t, EdbTrackP &t1, int isplit );
   int            SplitTrackByKink( EdbTrackP *t, TObjArray &tracks, float maxkink );
   float          PMS_KF(EdbTrackP &t, float p0=10., float probbest=0.5);
+
+  // theta proxy
+  float  PFromTheta(float theta) const;
+  double ProbSegMCSTheta(EdbSegP *s1, EdbSegP *s2);
+  float  Chi2SegMCSTheta(const EdbSegP &s1, const EdbSegP &s2);
 
   static float   Chi2ACP( EdbSegP s1, EdbSegP s2, EdbScanCond &cond);
   static float   Chi2ASeg( EdbSegP &s1, EdbSegP &s2, EdbSegP &s, EdbScanCond &cond1, EdbScanCond &cond2);

@@ -193,11 +193,14 @@ void EdbTrackAssembler::AddPattern(EdbPattern &p)
     if(s->Flag()==-10)   continue;
     s->SetErrors();
     eCond.FillErrorsCov(s->TX(),s->TY(),s->COV());
-    if( !AddSegment( *s ) )
+    if( !AddSegment( *s ) ) {
       AddSegmentAsTrack( *s );
+      Log(4,"EdbTrackAssembler::AddPattern", "attached as track: segment ID %d, segment plate %d", s->ID(), s->Plate()); //modV
+    }
     else {
       attached++;
       s->SetTrack(1);
+      Log(4,"EdbTrackAssembler::AddPattern", "attached TO track: segment ID %d, segment plate %d", s->ID(), s->Plate()); //modV
     }
   }
   // calculate lost segments
@@ -340,6 +343,15 @@ float EdbTrackAssembler::ProbSeg( EdbSegP &s1, EdbSegP &s2 )
     EdbSegP s;
     float chi = eFitter.Chi2PSeg( s1, s2, s, eCond, eCond );
     prob = (float)TMath::Prob( chi*chi, 4);
+  }
+  else if(eDoUseMCS==4)
+  {
+    // Same lookup pattern as eDoUseMCS==1, but uses a theta-derived momentum
+    // proxy (~sqrt(theta) dependence) instead of the segment's own P(),
+    // so large-angle tracks get a looser MCS-based probability.
+    EdbTrackP* t = dynamic_cast<EdbTrackP*> (&s1);
+    EdbSegP* seg = t?(const_cast<EdbSegP*>(t->TrackEnd())):0;
+    prob = seg?(eFitter.ProbSegMCSTheta(seg, &s2)):0;
   }
   else
   {
@@ -490,7 +502,7 @@ void EdbTrackAssembler::FitTracks()
     EdbTrackP *t = (EdbTrackP*)(eTracks.At(i));
     if(t->Flag()==-10) continue;
     int nseg=t->N();
-    t->FitTrackKFS(0,10000);
+    t->FitTrackKFS(0,4566);
         //fit.FitTrackLine(*t);
     if(nseg>1) RecalculateSegmentsProb(*t);
   }

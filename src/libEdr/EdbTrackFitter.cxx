@@ -47,6 +47,57 @@ void EdbTrackFitter::SetDefaultBrick()
   ePcut          = 0.050;
   eM             = 0.13957;
   eDE_correction = false;
+
+  // defaults for the theta->momentum proxy (do_use_mcs=4 only)
+  eThetaRef = 0.1;   // rad, anchor angle -- tune against your data
+  ePMin     = 0.1;   // GeV, floor
+  ePMax     = 5000.;   // GeV, ceiling
+}
+
+//______________________________________________________________________________s
+float EdbTrackFitter::PFromTheta(float theta) const
+{
+  // Proxy for momentum based on polar angle
+  if(theta < 1e-4) theta = 1e-4;
+  float p = ePdef * TMath::Power(theta, -1.68);
+  //cout << " Estimated momentum (MCS 4) " << p << " GeV " << endl;
+  if(p < ePMin) p = ePMin;
+  if(p > ePMax) p = ePMax;
+  return p;
+}
+
+double EdbTrackFitter::ProbSegMCSTheta(EdbSegP *s1, EdbSegP *s2)
+{
+  // Same as ProbSegMCS, but always uses PFromTheta(s1->Theta()) as the momentum,
+  // regardless of whether s1 already carries a reconstructed P(). Operates on
+  // a local copy of s1 so the original segment/track is never modified.
+  EdbSegP tmp(*s1);
+  tmp.SetP( PFromTheta(s1->Theta()) );
+  return EdbPVRec::ProbeSeg(&tmp, s2, eX0, eM);
+}
+
+float EdbTrackFitter::Chi2SegMCSTheta(const EdbSegP &s1, const EdbSegP &s2)
+{
+  // Same as Chi2SegMCS, but always derives momentum from s1's polar angle
+  // via PFromTheta(), instead of s1.P()/ePdef. Independent copy so
+  // Chi2SegMCS itself is untouched.
+
+  double DZemul=88;
+
+  double dzem=0.5*(s1.DZ()+s2.DZ())+DZemul;
+  double dz=TMath::Abs(s1.Z()-s2.Z());
+  double dzpb=dz-dzem;
+  if(dzpb<=0) return 0;
+  double dist=EdbSegP::Distance(s1,s2);
+  dist*=dzpb/dz;
+
+  double mom = PFromTheta(s1.Theta());
+  double theta0=EdbPhysics::ThetaMCS(mom,eM,dist,eX0);
+
+  double theta=TMath::Sqrt2()*EdbSegP::Angle(s1,s2);
+  double chi=theta/theta0;
+  Log(5,"Chi2SegMCSTheta",Form("dist=%6.4f (%6.4f), p=%6.2f, th=%4.3g(%4.3g) => chi2=%5.4g",dist,eX0,mom,theta,theta0,chi*chi));
+  return chi*chi;
 }
 
 //______________________________________________________________________________
