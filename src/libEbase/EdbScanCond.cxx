@@ -171,6 +171,8 @@ void EdbScanCond::FillErrorsCov( float tx,float ty, TMatrixD &cov )
   float stx   = SigmaTX(theta);
   float sty   = SigmaTY(0);
 
+  cov.Zero();
+
   cov(0,0) = (double)(sx*sx);
   cov(1,1) = (double)(sy*sy); 
   cov(2,2) = (double)(stx*stx);
@@ -180,7 +182,9 @@ void EdbScanCond::FillErrorsCov( float tx,float ty, TMatrixD &cov )
   //double Phi = -ATan2(ty,tx);    // "-" seems to be a bug
   double Phi = ATan2(ty,tx);
   TMatrixD t(5,5);
+  t.Zero();
   TMatrixD tt(5,5);
+  tt.Zero();
   t(0,0) =  Cos(Phi);
   t(0,1) = -Sin(Phi);
   t(1,0) =  Sin(Phi);
