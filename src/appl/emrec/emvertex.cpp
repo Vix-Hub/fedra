@@ -24,7 +24,7 @@ EdbVertexRec gEVR;
 void VertexRec(EdbID id, TEnv &cenv);
 void ReadVertex(EdbID id,TEnv &env);
 void MakeScanCondBT(EdbScanCond &cond, TEnv &env);
-void SetTracksErrors(TObjArray &tracks, EdbScanCond &cond, float p, float m);
+void SetTracksErrors(TObjArray &tracks, EdbScanCond &cond);
 void do_vertex(TEnv &env);
 void AddCompatibleTracks(EdbPVRec &v_trk, EdbPVRec &v_vtx);
 bool IsCompatible(EdbVertex &v, EdbTrackP &t);
@@ -73,6 +73,7 @@ void set_default(TEnv &env)
   env.SetValue("emvertex.trfit.M"        ,  0.139);
   env.SetValue("emvertex.bt.Sigma0", "0.2 0.2 0.002 0.002" );
   env.SetValue("emvertex.bt.Degrad", 5. );
+  env.SetValue("emvertex.bt.RadX0", 3502);
 }
 
 //---------------------------------------------------------------------
@@ -277,7 +278,7 @@ void do_vertex(TEnv &env)
   float pfit      = env.GetValue("emvertex.trfit.P"        , 10 );
   float mfit      = env.GetValue("emvertex.trfit.M"        ,  0.139);
   if(do_trfit) {
-    SetTracksErrors( *(gAli.eTracks), gCond, pfit,mfit );
+    SetTracksErrors( *(gAli.eTracks), gCond );
     //gAli.FitTracks(pfit,mfit );
   }
 
@@ -314,7 +315,7 @@ void MakeScanCondBT(EdbScanCond &cond, TEnv &env)
   cond.SetChi2Max( 6.5 );
   cond.SetChi2PMax( 6.5 );
   cond.SetChi2Mode( 3 );
-  cond.SetRadX0( 5810. );
+  cond.SetRadX0( env.GetValue("emvertex.bt.RadX0", 3502) );
   cond.SetName("SND_basetrack");
 }
 
@@ -350,15 +351,15 @@ bool IsCompatible(EdbVertex &v, EdbTrackP &t)
 }
 
 //-----------------------------------------------------------------------------
-void SetTracksErrors(TObjArray &tracks, EdbScanCond &cond, float p, float m)
+void SetTracksErrors(TObjArray &tracks, EdbScanCond &cond)
 {
   int n = tracks.GetEntries();
-  Log(2,"SetTracksErrors","refit %d tracks with a new errors and p=%f m=%f",n,p,m);
+  Log(2,"SetTracksErrors","refit %d tracks with a new errors",n);
   for(int i=0; i<n; i++) {
      EdbTrackP *t = (EdbTrackP*)tracks.At(i);
      int nseg = t->N();
-     t->SetSegmentsP(p);
-     t->SetM(m);
+     //t->SetSegmentsP(p);
+     //t->SetM(m);
      for(int j=0; j<nseg; j++) {
        EdbSegP   *s = t->GetSegment(j);
        s->SetErrors0();
