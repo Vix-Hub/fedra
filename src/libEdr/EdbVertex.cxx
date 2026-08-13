@@ -160,7 +160,7 @@ EdbSegP   *EdbVertex::GetTrackV(int i, bool usesegpar)
 {
 	EdbTrackP *t = GetTrack(i); if(!t) return 0;
 	EdbSegP *s = t->TrackExtremity(Zpos(i), usesegpar);
-  if( s->P()>=0 && (s->P() != t->P()) ) Log(1,"GetTrackV","Warning! segment momentum=%f is not equal to the track momentum=%f",s->P(), t->P() );
+  //if( s->P()>=0 && (s->P() != t->P()) ) Log(1,"GetTrackV","Warning! segment momentum=%f is not equal to the track momentum=%f",s->P(), t->P() );
 	return s;
 }
 
@@ -640,8 +640,48 @@ void EdbVertex::Edb2Vt(const EdbSegP& tr, Track& t, float X0, float m)
   for(int k=0; k<4; k++) 
     for(int l=0; l<4; l++) cov(k,l) = (tr.COV())(k,l);
 
+  VtSymMatrix covpred_noMS(4);
+  covpred_noMS = pred*(cov*(pred.T()));
+
   VtSymMatrix covpred(4);         // covariance matrix for prediction
   covpred = pred*(cov*(pred.T()))+dms;
+
+  //cout << fixed << setprecision(6);
+
+  double dPb = dz*TMath::Sqrt(1.+tx*tx+ty*ty); // thickness of the Pb+emulsion cell in microns
+  double theta0sq = EdbPhysics::ThetaMS2( p, m, dPb, X0 );
+
+  /*cout << "\n===================== MATRIX COMPARISON =====================\n";
+  cout << " Track Parameters: P " << p << " m " << m << endl;
+  cout << " Estimated theta0sq " << theta0sq << " dPb " << dPb << " X0 " << X0 << endl;
+  cout << " theta0 " << TMath::Sqrt(theta0sq) << endl;
+  cout << " dz " << dz << endl;
+  cout << "        DMS MATRIX                 COVPRED_NO_MS                COVPRED\n\n";
+
+  for(int i=0;i<4;i++)
+  {
+      // --- DMS ---
+      cout << "[ ";
+      for(int j=0;j<4;j++)
+          cout << setw(10) << dms(i,j) << " ";
+      cout << "]   ";
+
+      // --- COVPRED_NO_MS ---
+      cout << "[ ";
+      for(int j=0;j<4;j++)
+          cout << setw(10) << covpred_noMS(i,j) << " ";
+      cout << "]   ";
+
+      // --- COVPRED ---
+      cout << "[ ";
+      for(int j=0;j<4;j++)
+          cout << setw(10) << covpred(i,j) << " ";
+      cout << "]";
+
+      cout << endl;
+  }
+
+  cout << "==============================================================\n\n";*/
 
   CMatrix covp;             // covariance matrix for the track
   covp.clear();
@@ -838,6 +878,7 @@ int EdbVertexRec::MakeV( EdbVertex &edbv, bool isRefit )
       Track *t = new Track();
       //seg->PrintNice();
       //printf("%f\n",edbv.Z());
+      //cout << " Edb2Vt --- X0 " << X0  << " seg->ID() " << seg->ID() << " track M " <<  edbv.GetTrack(i)->M() << " track P " << edbv.GetTrack(i)->P() << endl;
       edbv.Edb2Vt(*seg, *t, X0, edbv.GetTrack(i)->M());
       v->add_track(*t);
     }
@@ -1090,6 +1131,8 @@ int EdbVertexRec::FindVertex()
   // ProbMin - minimal probability for chi2-distance between tracks
 
   //if(!ePVR) ePVR = ((EdbPVRec *)(gROOT->GetListOfSpecials()->FindObject("EdbPVRec")));
+
+  //cout << " Find Vertex Start RadX0 " << ePVR->GetScanCond()->RadX0() << endl;
   if (ePVR) if (ePVR->IsA() != EdbPVRec::Class()) ePVR = 0;
   if(!ePVR) {Log(1,"EdbVertexRec::FindVertex","Error! EdbPVRec not defined, use SetPVRec(...)"); return 0;}
 
@@ -1105,6 +1148,25 @@ int EdbVertexRec::FindVertex()
   nvtx += LoopVertex(ends  , starts,  0, 1 );
 
   if(gEDBDEBUGLEVEL>1) printf(" Begin-Begin tracks combinations:\n");
+
+  int   nz1 = starts.GetEntriesFast();
+  EdbTrackP* tr1;
+  TIndexCell *c1=0,  *c2=0;
+
+  for(int iz1=0; iz1<nz1; iz1++)   {           // first z-group
+    c1 = starts.At(iz1);
+    int z1 = c1->Value()*eZbin;
+    int nc1=c1->GetEntriesFast();
+
+    for(int ic1=0; ic1<nc1; ic1++) {      // first z-group entries
+
+        int itr1 = c1->At(ic1)->Value();
+        tr1  = (EdbTrackP*)((*eEdbTracks)[itr1]);
+        if(!tr1)             continue;
+        //cout << " track " << tr1->GetSegmentFirst()->MCTrack() << " Z " << tr1->GetSegmentFirst()->Z() << endl;
+    }
+
+  }
   nvtx += LoopVertex(starts, starts,  1, 1 );
 
   if(gEDBDEBUGLEVEL>1) printf(" End-End tracks combinations:\n");
@@ -1187,10 +1249,14 @@ int EdbVertexRec::LoopVertex( TIndexCell &list1, TIndexCell &list2,
   //int ntot = nz1*nz2;
   //printf("  2-track vertices search in progress... %3d%%", 0);
 
+  //cout << " NZ1 " << nz1 << endl;
+
   for(int iz1=0; iz1<nz1; iz1++)   {           // first z-group
     c1 = list1.At(iz1);
     z1 = c1->Value()*eZbin;
     int nc1=c1->GetEntriesFast();
+
+    //cout << "DEBUG: iz1= " << iz1 << " " << " bin= " << c1->Value() << " z1= " << z1 << " nc1 " << nc1 << endl; 
 
     for(int iz2=0; iz2<nz2; iz2++)   {         // second z-group
       c2 = list2.At(iz2);
@@ -1206,28 +1272,35 @@ int EdbVertexRec::LoopVertex( TIndexCell &list1, TIndexCell &list2,
       int nc2=c2->GetEntriesFast();
       for(int ic1=0; ic1<nc1; ic1++) {      // first z-group entries
 
-	itr1 = c1->At(ic1)->Value();
-	tr1  = (EdbTrackP*)((*eEdbTracks)[itr1]);
-	if(!tr1)             continue;
+        itr1 = c1->At(ic1)->Value();
+        tr1  = (EdbTrackP*)((*eEdbTracks)[itr1]);
+        if(!tr1)             continue;
 
-	int ic2start=0;
-	if(c1==c2) ic2start=ic1+1;
+        int ic2start=0;
+        if(c1==c2) ic2start=ic1+1;
 
-	for(int ic2=ic2start; ic2<nc2; ic2++) {    // second z-group entries
-      	  ncombin++;
+        //cout << " c1 " << c1 << " c2 " << c2 << endl;
+        //cout << " ic2start " << ic2start << " nc2 " << nc2 << " before loop " << endl;
 
-	  itr2 = c2->At(ic2)->Value();
-	  if(itr2==itr1)       continue; 
-	  tr2  = (EdbTrackP*)((*eEdbTracks)[itr2]);
-	  if(!tr2)             continue;
+        for(int ic2=ic2start; ic2<nc2; ic2++) {    // second z-group entries
+          
+          ncombin++;
 
-	  EdbVertex *vtx = ProbVertex2( tr1, tr2, zpos1, zpos2 );
-	  if(vtx) {
-	    AddVertex(vtx);
-	    nvtx++;
-	  }
+          //cout << " ncombin " << ncombin << endl;
 
-	}
+          itr2 = c2->At(ic2)->Value();
+          if(itr2==itr1)       continue; 
+          tr2  = (EdbTrackP*)((*eEdbTracks)[itr2]);
+          if(!tr2)             continue;
+
+          //cout << " going to probvertex 2 " << endl; 
+          EdbVertex *vtx = ProbVertex2( tr1, tr2, zpos1, zpos2 );
+          if(vtx) {
+            AddVertex(vtx);
+            nvtx++;
+          }
+
+        }
       }
     }
   }
