@@ -50,7 +50,7 @@ class EdbTrackFitter : public TNamed {
   float          PMS_KF(EdbTrackP &t, float p0=10., float probbest=0.5);
 
   // theta proxy
-  float  PFromTheta(float theta) const;
+  float  PFromTheta(float theta, int option) const;
   double ProbSegMCSTheta(EdbSegP *s1, EdbSegP *s2);
   float  Chi2SegMCSTheta(const EdbSegP &s1, const EdbSegP &s2);
 

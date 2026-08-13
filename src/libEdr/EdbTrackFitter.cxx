@@ -55,11 +55,19 @@ void EdbTrackFitter::SetDefaultBrick()
 }
 
 //______________________________________________________________________________s
-float EdbTrackFitter::PFromTheta(float theta) const
+float EdbTrackFitter::PFromTheta(float theta, int option) const
 {
   // Proxy for momentum based on polar angle
   if(theta < 1e-4) theta = 1e-4;
-  float p = ePdef * TMath::Power(theta, -1.68);
+  float p = 0.;
+  float theta_break = 0.295, p_break = 1.47, BL = -1.73, BR = -0.8;
+
+  if (option == 0) p = ePdef * TMath::Power(theta, -1.68);
+  else if (option == 1) {
+    if (theta >= theta_break) p = p_break * TMath::Power(theta/theta_break, BL);
+    else p = p_break *  TMath::Power(theta/theta_break, BR);
+  }
+
   //cout << " Estimated momentum (MCS 4) " << p << " GeV " << endl;
   if(p < ePMin) p = ePMin;
   if(p > ePMax) p = ePMax;
@@ -72,7 +80,7 @@ double EdbTrackFitter::ProbSegMCSTheta(EdbSegP *s1, EdbSegP *s2)
   // regardless of whether s1 already carries a reconstructed P(). Operates on
   // a local copy of s1 so the original segment/track is never modified.
   EdbSegP tmp(*s1);
-  tmp.SetP( PFromTheta(s1->Theta()) );
+  tmp.SetP( PFromTheta(s1->Theta(), 1) );
   return EdbPVRec::ProbeSeg(&tmp, s2, eX0, eM);
 }
 
@@ -91,7 +99,7 @@ float EdbTrackFitter::Chi2SegMCSTheta(const EdbSegP &s1, const EdbSegP &s2)
   double dist=EdbSegP::Distance(s1,s2);
   dist*=dzpb/dz;
 
-  double mom = PFromTheta(s1.Theta());
+  double mom = PFromTheta(s1.Theta(), 1);
   double theta0=EdbPhysics::ThetaMCS(mom,eM,dist,eX0);
 
   double theta=TMath::Sqrt2()*EdbSegP::Angle(s1,s2);
