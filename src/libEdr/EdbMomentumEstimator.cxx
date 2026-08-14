@@ -21,6 +21,10 @@
 #include "EdbPhys.h"
 #include "EdbAffine.h"
 #include "EdbMomentumEstimator.h"
+#include <fstream>
+#include "TFitResult.h"
+#include <TH1F.h>
+#include <TH2F.h>
 
 ClassImp(EdbMomentumEstimator);
 
@@ -73,7 +77,8 @@ void EdbMomentumEstimator::Set0()
 void EdbMomentumEstimator::SetParPMS_Mag()
 {
   // set the default values for parameters used in PMS_Mag
-  eX0 = 5600;
+  // eX0 = 5600;
+  eX0 = 3521;
 
   eDTsErrorFun.SetParameters(0.0021, 0.0054,0,0,0);
   eDTxErrorFun.SetParameters(0.0021, 0.0093,0,0,0);
@@ -473,13 +478,36 @@ float EdbMomentumEstimator::PMSang(EdbTrackP &tr)
 
 //___________________________________________________________________________________________________
 
+bool remove_outliers(TGraphErrors* graph, TF1* fitFunc, const double threshold) {
+  bool remove_points = false;
+  int idx = graph->GetN() - 1;
+
+  while (idx >= 0 && graph->GetN() > 2) {  
+      double x, y;
+      graph->GetPoint(idx, x, y);
+      double y_fit = fitFunc->Eval(x);
+      double residual = y - y_fit;
+
+      if (std::abs(residual) > threshold) {
+          graph->RemovePoint(idx);
+          remove_points = true;
+          idx--;
+      } else {
+          break;
+      }
+  }
+
+  return remove_points;
+}
 
 float EdbMomentumEstimator::PMScoordinate(EdbTrackP &tr)
 {
   // Momentum estimation by coordinate method
   //
-  // April 2010
-  
+  // April 2010 -- update May 2025
+
+  gErrorIgnoreLevel = kError; // suppress MINUIT warnings
+
   int nseg = tr.N();
   int npl  = tr.Npl();
   
@@ -516,8 +544,6 @@ float EdbMomentumEstimator::PMScoordinate(EdbTrackP &tr)
   for(int i=0;i<npl;i++)
     {
       da[i]    = 0;
-      dax[i]   = 0;
-      day[i]   = 0;
       nentr[i] = 0;
     }
 
@@ -554,8 +580,6 @@ float EdbMomentumEstimator::PMScoordinate(EdbTrackP &tr)
 	      appy = (  DY1 * ((s2->Z()-s3->Z())/(s1->Z()-s2->Z())) - DY2  ) * (  DY1 * ((s2->Z()-s3->Z())/(s1->Z()-s2->Z())) - DY2  );
 
 
-	      dax[nr1] += appx;
-	      day[nr1] += appy;
 	      //da[nr1] += (  (((s2->X()-s1->X())*(s2->Z()-s3->Z())/(s1->Z()-s2->Z()))-(s3->X()-s2->X()))**2 + (((y[j]-y[i])*(z[j]-z[k])/(z[i]-z[j]))-(y[k]-y[j]))**2 ) /2. ; 
 	      da[nr1] += (appx + appy)/2.; 
 	      nentr[nr1] += 1;
@@ -572,69 +596,125 @@ float EdbMomentumEstimator::PMScoordinate(EdbTrackP &tr)
       if(nentr[i]>0)
   {
     IsEmpty=false;
-    dax[i] = sqrt(dax[i]/nentr[i]);
-    day[i] = sqrt(day[i]/nentr[i]);
     da[i]  = sqrt(da[i]/nentr[i]);
   }
     }
   
   SafeDelete(eF1);
-  SafeDelete(eF1X);
-  SafeDelete(eF1Y);
   SafeDelete(eG);
-  SafeDelete(eGX);
-  SafeDelete(eGY);
 
   if(IsEmpty)return -99;
   eG  = new TGraphErrors();
-  eGX = new TGraphErrors();
-  eGY = new TGraphErrors();
 
+  // int t = 1315; //60 films (MC - Slavich)
+  int t = 1350; //57 films (Nagoya)
 
   int cont = 0;
-  for(int i=0;i<npl;i++)
-    {
-      if(nentr[i]>eMinEntr)
-	{
-	  eGX->SetPoint(cont,i*1300,dax[i]);
-	  eGX->SetPointError(cont,0,dax[i]/Sqrt(nentr[i]));
-	  eGY->SetPoint(cont,i*1300,day[i]);
-	  eGY->SetPointError(cont,0,day[i]/Sqrt(nentr[i]));
-	  eG->SetPoint(cont,i*1300,da[i]);
+  for(int i=0;i<npl;i++) {
+      if(nentr[i]>eMinEntr) {
+	  eG->SetPoint(cont,i*t,da[i]);
 	  eG->SetPointError(cont,0,da[i]/Sqrt(nentr[i]));
 	  cont++;
-	}
-    }  
+	  } 
+  }  
   if(cont==0)return -99;
-  eF1X = MCSCoordErrorFunction("eF1X",tmean,eX0);
-  eF1X->SetParLimits(0,0.0001,100);
-  eF1X->SetParLimits(1,0.0001,100);
-  eF1X->SetParameter(0,5);                             // starting value for momentum in GeV
-  eF1X->SetParameter(1,10);                              // starting value for coordinate error
-  
-  eF1Y = MCSCoordErrorFunction("eF1Y",tmean,eX0); 
-  //eF1Y->SetRange(0,Min(57,maxY));
-  eF1Y->SetParLimits(0,0.0001,100);
-  eF1Y->SetParLimits(1,0.0001,100);
-  eF1Y->SetParameter(0,5);                             // starting value for momentum in GeV
-  eF1Y->SetParameter(1,10);                              // starting value for coordinate error
+  if(cont==1)return -98;
+
   
   eF1 = MCSCoordErrorFunction("eF1",tmean,eX0);
   //eF1->SetRange(0,Min(57,max3D));
   eF1->SetParLimits(0,0.0,100);
-  eF1->SetParLimits(1,0.0,100);
+  // eF1->SetParLimits(1,0.0,100);
   eF1->SetParameter(0,5);                             // starting value for momentum in GeV
-  eF1->SetParameter(1,10);                              // starting value for coordinate error  
+  // eF1->SetParameter(1,0.15);                              // starting value for coordinate error  
+  eF1->FixParameter(1,0.15);                              // starting value for coordinate error  
 
-  const char *fitopt = "MQ"; //MQR
-  eG ->Fit(eF1, fitopt);
-  eGX->Fit(eF1X,fitopt);
-  eGY->Fit(eF1Y,fitopt);
+  const char *fitopt = "MQS"; //MQR
+  TFitResultPtr eGResult = eG ->Fit(eF1, fitopt);
+  if (eGResult->IsValid()){
+    eP  = 1./sqrt(eF1->GetParameter(0));
+  } else {
+    eP = -10;      
+  }
+
+  const float minIncrease = 0.1;
+
+  TGraphErrors* eG_inc = new TGraphErrors();
+  int nPoints = eG->GetN();
+  
+  double x_prev, y_prev;
+  eG->GetPoint(0, x_prev, y_prev);
+  double ex_prev = eG->GetErrorX(0);
+  double ey_prev = eG->GetErrorY(0);
+  
+  eG_inc->SetPoint(0, x_prev, y_prev);
+  eG_inc->SetPointError(0, ex_prev, ey_prev);
+  
+  int pt_count = 1;
+  for (int i = 1; i < nPoints; ++i) {
+      double x, y;
+      eG->GetPoint(i, x, y);
+      double ex = eG->GetErrorX(i);
+      double ey = eG->GetErrorY(i);
+  
+      if (y >= y_prev + minIncrease) {
+          eG_inc->SetPoint(pt_count, x, y);
+          eG_inc->SetPointError(pt_count, ex, ey);  
+          y_prev = y;
+          ++pt_count;
+      } else break;
+  }
+
+  // TGraphErrors* eG_inc_init = nullptr; 
+  // TGraphErrors* eG_inc_post1 = nullptr;
+  // TGraphErrors* eG_inc_post2 = nullptr; 
 
 
-  eP  = 1./sqrt(eF1->GetParameter(0));
-  ePx = 1./sqrt(eF1X->GetParameter(0));
-  ePy = 1./sqrt(eF1Y->GetParameter(0));
+  if (eG_inc->GetN() > 2) {
+    TFitResultPtr refitResult = eG_inc->Fit(eF1, fitopt);
+    if (refitResult->IsValid()) {
+      eP = 1. / sqrt(eF1->GetParameter(0));
+
+      // eG_inc_init = (TGraphErrors*)eG_inc->Clone("eG_inc_init");
+
+      const double resisualThreshold = 0.2;
+
+      bool remove_1 = remove_outliers(eG_inc, eF1, resisualThreshold);
+      bool secondIteration = false;
+
+      if (remove_1) {
+        int remainingPoints = eG_inc->GetN();
+        if (remainingPoints > 2) {
+          refitResult = eG_inc->Fit(eF1, fitopt);
+          if (refitResult->IsValid()) {
+            eP = 1. / sqrt(eF1->GetParameter(0));
+            // eG_inc_post1 = (TGraphErrors*)eG_inc->Clone("eG_inc_post1");
+            secondIteration = true;
+          } 
+        } 
+      }
+
+      if (secondIteration) {
+        bool remove_2 = remove_outliers(eG_inc, eF1, resisualThreshold);
+
+        if (remove_2) {
+          int remainingPoints = eG_inc->GetN();
+          if (remainingPoints > 2) {
+            refitResult = eG_inc->Fit(eF1, fitopt);
+            if (refitResult->IsValid()) {
+              eP = 1. / sqrt(eF1->GetParameter(0));
+              // eG_inc_post2 = (TGraphErrors*)eG_inc->Clone("eG_inc_post2");
+            } 
+          } 
+        }
+      } 
+    }
+  }
+
+  // delete eG_inc_init;
+  // delete eG_inc_post1;
+  // delete eG_inc_post2;
+  delete eG_inc;  
   return eP;
 }
 
