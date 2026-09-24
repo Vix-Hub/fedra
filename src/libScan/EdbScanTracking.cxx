@@ -282,25 +282,42 @@ EdbTrackP *EdbTrackAssembler::AddSegment(EdbSegP &s)
   for(int i=0; i<n; i++) 
     tr.GetSegment(i)->SetProb( ProbSeg( *(tr.GetSegmentF(i)),  *(tr.GetSegment(i)) ) ); 
 }
+
+  // -------------------------------------------------------------------------------------
+bool EdbTrackAssembler::IsBeamTrack(EdbSegP &s1)
+{
+  if(!eUseBeamCuts) return false;
+
+  EdbTrackP *t = dynamic_cast<EdbTrackP*>(&s1);
+  EdbSegP *segFirst = t ? t->GetSegmentFirst() : &s1;
+  if(!segFirst) return false;
+
+  return ( segFirst->Theta() < eBeamThetaMax );
+}
   
 //--------------------------------------------------------------------------------------
 float EdbTrackAssembler::ProbSeg( EdbSegP &s1, EdbSegP &s2 )
 {
+
+  bool isBeam = IsBeamTrack(s1);
+  float dtmax = isBeam ? eDTmaxBeam : eDTmax;
+  float drmax = isBeam ? eDRmaxBeam : eDRmax;
+
   // return the probability that the second segment can belong to track defined by s1
   float dtx = s1.TX() - s2.TX();
-  if( Abs( dtx ) > eDTmax )    return 0;
+  if( Abs( dtx ) > dtmax )    return 0;
   float dty = s1.TY() - s2.TY();
-  if( Abs( dty ) > eDTmax )    return 0;
+  if( Abs( dty ) > dtmax )    return 0;
   double dt2 = dtx*dtx +  dty*dty;
-  if(dt2>eDTmax*eDTmax)        return 0;
+  if(dt2>dtmax*dtmax)        return 0;
   
   float dz = s2.Z()-s1.Z();
   float dx = s2.X() - (s1.X() + dz*s1.TX());
-  if( Abs( dx ) > eDRmax )     return 0;
+  if( Abs( dx ) > drmax )     return 0;
   float dy = s2.Y() - (s1.Y() + dz*s1.TY());
-  if( Abs( dy ) > eDRmax )     return 0;
+  if( Abs( dy ) > drmax )     return 0;
   double dr2 = dx*dx +  dy*dy;
-  if(dr2>eDRmax*eDRmax)        return 0;
+  if(dr2>eDRmax*drmax)        return 0;
   
   float prob=0;
   if(eDoUseMCS==1){
@@ -356,7 +373,8 @@ float EdbTrackAssembler::ProbSeg( EdbSegP &s1, EdbSegP &s2 )
   else
   {
     EdbSegP s;
-    float chi = eFitter.Chi2SegM( s1, s2, s, eCond, eCond );
+    EdbScanCond &cond1use = isBeam ? eCondBeam : eCond;
+    float chi = eFitter.Chi2SegM( s1, s2, s, cond1use, eCond );
     prob = (float)TMath::Prob( chi*chi, 4);
   }
   
@@ -876,6 +894,12 @@ void EdbScanTracking::TrackAli(EdbPVRec &ali, TEnv &env)
     etra.eDRmax                 = env.GetValue("fedra.track.DRmax"          ,    45.   );
     etra.eDZGapMax              = env.GetValue("fedra.track.DZGapMax"       ,  5000.   );
     etra.eProbMin               = env.GetValue("fedra.track.probmin"        ,  0.001   );
+
+    etra.eUseBeamCuts            = env.GetValue("fedra.track.UseBeamCuts"     ,    true    );
+    etra.eBeamThetaMax           = env.GetValue("fedra.track.BeamThetaMax"    ,    0.03    );
+    etra.eDTmaxBeam              = env.GetValue("fedra.track.DTmaxBeam"       ,    0.01    );
+    etra.eDRmaxBeam              = env.GetValue("fedra.track.DRmaxBeam"       ,   20.      );
+    etra.eCondBeam.SetSigma0(    env.GetValue("fedra.track.Sigma0Beam"        , "2 2 0.0025 0.0025") );
     
     bool        do_misalign     = env.GetValue("fedra.track.do_misalign"    ,      0   );
     int         npass           = env.GetValue("fedra.track.npass"          ,      1   );
