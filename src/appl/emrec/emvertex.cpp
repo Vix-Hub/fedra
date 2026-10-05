@@ -33,7 +33,7 @@ int last_trkID = -1;
 void VertexRec(EdbID id, TEnv &cenv);
 void ReadVertex(EdbID id,TEnv &env);
 void MakeScanCondBT(EdbScanCond &cond, TEnv &env);
-void SetTracksErrors(TObjArray &tracks, EdbScanCond &cond);
+void SetTracksErrors(TObjArray &tracks, EdbScanCond &cond, float pfit); // test to use seg momentum in trk refit
 void do_vertex(TEnv &env);
 void AddCompatibleTracks(TEnv &env, EdbPVRec &v_trk, EdbPVRec &v_vtx, float r2max, float dzmax, TObjArray &v_out, TObjArray &v_out2, TNtuple* outTree);
 bool IsCompatible(EdbVertex &v, EdbTrackP &t, float r2max, float dzmax, float *r2, float *dz);
@@ -69,6 +69,8 @@ void set_default(TEnv &env)
   env.SetValue("emvertex.vtx.ImpMax"        , 10.);
   env.SetValue("emvertex.vtx.UseMom"        , false);
   env.SetValue("emvertex.vtx.UseSegPar"     , false);
+  env.SetValue("emvertex.vtx.UseSegParFit"  , -1);
+
   env.SetValue("emvertex.vtx.QualityMode"   , 0);  // (0:=Prob/(sigVX^2+sigVY^2); 1:= inverse average track-vertex distance)
   env.SetValue("emvertex.vtx.cutvtx"        , "(flag==0||flag==3)&&n>4");
   env.SetValue("emvertex.vtx.cuttr"         , "nseg>4&&npl<50");
@@ -250,6 +252,7 @@ void ReadVertex(EdbID id, TEnv &env)
   gEVR.eImpMax     = env.GetValue("emvertex.vtx.ImpMax"        , 10.);
   gEVR.eUseMom     = env.GetValue("emvertex.vtx.UseMom"        , false);
   gEVR.eUseSegPar  = env.GetValue("emvertex.vtx.UseSegPar"     , false);
+  gEVR.eUseSegParFit  = env.GetValue("emvertex.vtx.UseSegParFit"  , -1);
   gEVR.eQualityMode= env.GetValue("emvertex.vtx.QualityMode"   , 0);  // (0:=Prob/(sigVX^2+sigVY^2); 1:= inverse average track-vertex distance)
   TCut cutvtx      = env.GetValue("emvertex.vtx.cutvtx"        , "(flag==0||flag==3)&&n>4");
 
@@ -324,7 +327,7 @@ void do_vertex(TEnv &env)
   float pfit      = env.GetValue("emvertex.trfit.P"        , 10 );
   float mfit      = env.GetValue("emvertex.trfit.M"        ,  0.139);
   if(do_trfit) {
-    SetTracksErrors( *(gAli.eTracks), gCond );
+    SetTracksErrors( *(gAli.eTracks), gCond, pfit );
     //gAli.FitTracks(pfit,mfit );
   }
 
@@ -337,6 +340,8 @@ void do_vertex(TEnv &env)
   gEVR.eImpMax     = env.GetValue("emvertex.vtx.ImpMax"        , 10.);
   gEVR.eUseMom     = env.GetValue("emvertex.vtx.UseMom"        , false);
   gEVR.eUseSegPar  = env.GetValue("emvertex.vtx.UseSegPar"     , false);
+  int useSegParFit    = env.GetValue("emvertex.vtx.UseSegParFit", -1);   // final vertex fit
+  gEVR.eUseSegParFit  = -1;                                              // building: same as the matching
   gEVR.eQualityMode= env.GetValue("emvertex.vtx.QualityMode"   , 0);  // (0:=Prob/(sigVX^2+sigVY^2); 1:= inverse average track-vertex distance)
 
   printf("%d tracks for vertexing\n",  gEVR.eEdbTracks->GetEntries() );
@@ -346,6 +351,22 @@ void do_vertex(TEnv &env)
 
   if(nvtx == 0) return;
   int nadd =  gEVR.ProbVertexN();
+  // final refit, tracks fixed, if the fit representation differs from the building one
+  if (useSegParFit >= 0 && (useSegParFit > 0) != gEVR.eUseSegPar) {
+    int nref = 0, nold = 0;
+    for (int i = 0; i < gEVR.Nvtx(); i++) {
+      EdbVertex *v = gEVR.GetVertex(i);
+      if (!v || v->Flag() < 0) continue;           // not written to the tree anyway
+      gEVR.eUseSegParFit = useSegParFit;
+      if (gEVR.MakeV(*v, true)) { nref++; continue; }
+      gEVR.eUseSegParFit = -1;                     // refit failed: back to the building fit
+      if (gEVR.MakeV(*v)) nold++;
+      else                v->SetFlag(-10);
+    }
+    gEVR.eUseSegParFit = useSegParFit;
+    Log(2, "do_vertex", "final refit with %s: %d refitted, %d kept the building fit",
+        useSegParFit ? "measured segments" : "fitted states", nref, nold);
+  }
   TString name;
   gSproc.MakeFileName(name,idset,"vtx.root",false);
   EdbDataProc::MakeVertexTree(*(gEVR.eVTX),name.Data());
@@ -376,6 +397,7 @@ void AddCompatibleTracks(TEnv &env, EdbPVRec &v_trk, EdbPVRec &v_vtx, float r2ma
   rfEVR.eImpMax     = env.GetValue("emvertex.vtx.ImpMax"        , 10.);
   rfEVR.eUseMom     = env.GetValue("emvertex.vtx.UseMom"        , false);
   rfEVR.eUseSegPar  = env.GetValue("emvertex.vtx.UseSegPar"     , false);
+  rfEVR.eUseSegParFit  = env.GetValue("emvertex.vtx.UseSegParFit"  , -1);
   rfEVR.eQualityMode= env.GetValue("emvertex.vtx.QualityMode"   , 0);  // (0:=Prob/(sigVX^2+sigVY^2); 1:= inverse average track-vertex distance)
   Log(1,"AddCompatibleTracks", "%d tracks, %d vertex", ntr,nvtx );
   if (do_vtxrefit){
@@ -564,6 +586,7 @@ void DiscardImp(TEnv &env, EdbPVRec &v_vtx, float imp_max)
   rfEVR.eImpMax     = env.GetValue("emvertex.vtx.ImpMax"        , 10.);
   rfEVR.eUseMom     = env.GetValue("emvertex.vtx.UseMom"        , false);
   rfEVR.eUseSegPar  = env.GetValue("emvertex.vtx.UseSegPar"     , false);
+  rfEVR.eUseSegParFit  = env.GetValue("emvertex.vtx.UseSegParFit"  , -1);
   rfEVR.eQualityMode= env.GetValue("emvertex.vtx.QualityMode"   , 0);  // (0:=Prob/(sigVX^2+sigVY^2); 1:= inverse average track-vertex distance)
   for(int iv=0; iv<nvtx; iv++){
     EdbVertex *v = v_vtx.GetVertex(iv);
@@ -591,7 +614,7 @@ void DiscardImp(TEnv &env, EdbPVRec &v_vtx, float imp_max)
   }
 }
 //-----------------------------------------------------------------------------
-void SetTracksErrors(TObjArray &tracks, EdbScanCond &cond)
+void SetTracksErrors(TObjArray &tracks, EdbScanCond &cond, float pfit)
 {
   int n = tracks.GetEntries();
   Log(2,"SetTracksErrors","refit %d tracks with a new errors",n);
@@ -605,6 +628,9 @@ void SetTracksErrors(TObjArray &tracks, EdbScanCond &cond)
        s->SetErrors0();
        cond.FillErrorsCov( s->TX(),s->TY(), s->COV() );
      }
-     t->FitTrackKFS();
+     float p = pfit;                                          // trfit.P > 0: assumed momentum
+     if (p <= 0 && t->NF() > 0) p = t->GetSegmentF(0)->P();   // else the momentum of the tracking fit
+     if (p > 0) t->SetP(p);
+     t->FitTrackKFS(false, cond.RadX0());
   }
 }

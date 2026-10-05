@@ -180,6 +180,7 @@ class EdbVertexPar: public TObject {
   Float_t    eImpMaxV;      // if the impact is <= eImpMaxV the 2-vertex is accepted disregard to it's probability
   Bool_t     eUseMom;       // use or not track momentum for vertex calculations
   Bool_t     eUseSegPar;    // use only the nearest measured segments for vertex fit (as Neuchatel)
+  Int_t      eUseSegParFit; // final vertex fit: 1 measured segments, 0 fitted states, -1 same as eUseSegPar
   Int_t      eQualityMode;  // vertex quality estimation method (0:=Prob/(sigVX^2+sigVY^2); 1:= inverse average track-vertex distance)
   Bool_t     eUseKalman;    // use or not Kalman for the vertex fit. Default is true
   Bool_t     eUseLimits;    // if true - look for the vertex only inside limits defined by eVmin:eVmax, default is false
@@ -187,7 +188,7 @@ class EdbVertexPar: public TObject {
   
   EdbVertexPar();
   virtual ~EdbVertexPar(){}
-  ClassDef(EdbVertexPar,1)  // vertex reconstruction parameters
+  ClassDef(EdbVertexPar,5)  // vertex reconstruction parameters
 };
 
 //_________________________________________________________________________

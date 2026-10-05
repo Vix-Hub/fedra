@@ -755,6 +755,7 @@ EdbVertexPar::EdbVertexPar()
   eImpMaxV    = 10.;       // microns
   eUseMom     = false;     // do not use it
   eUseSegPar  = false;     // use fitted track parameters
+  eUseSegParFit = -1;      // vertex fit as eUseSegPar
   eUseKalman  = true;      // use or not Kalman for the vertex fit. Default is true
   eUseLimits  = false;     // if true - look for the vertex only inside limits defined by eVmin:eVmax, default is false
 }
@@ -874,7 +875,7 @@ int EdbVertexRec::MakeV( EdbVertex &edbv, bool isRefit )
   EdbSegP *seg=0;
   for (int i=0; i<n; i++)
     {
-      seg = edbv.GetTrackV(i,eUseSegPar);
+      seg = edbv.GetTrackV(i, eUseSegParFit < 0 ? eUseSegPar : (eUseSegParFit > 0));
       Track *t = new Track();
       //seg->PrintNice();
       //printf("%f\n",edbv.Z());
