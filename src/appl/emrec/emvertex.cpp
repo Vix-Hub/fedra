@@ -33,7 +33,7 @@ int last_trkID = -1;
 void VertexRec(EdbID id, TEnv &cenv);
 void ReadVertex(EdbID id,TEnv &env);
 void MakeScanCondBT(EdbScanCond &cond, TEnv &env);
-void SetTracksErrors(TObjArray &tracks, EdbScanCond &cond, float pfit); // test to use seg momentum in trk refit
+void SetTracksErrors(TObjArray &tracks, EdbScanCond &cond, float pfit, float pmin, float pmax); // test to use seg momentum in trk refit
 void do_vertex(TEnv &env);
 void AddCompatibleTracks(TEnv &env, EdbPVRec &v_trk, EdbPVRec &v_vtx, float r2max, float dzmax, TObjArray &v_out, TObjArray &v_out2, TNtuple* outTree);
 bool IsCompatible(EdbVertex &v, EdbTrackP &t, float r2max, float dzmax, float *r2, float *dz);
@@ -85,6 +85,8 @@ void set_default(TEnv &env)
  
   env.SetValue("emvertex.trfit.doit"     ,  1 );
   env.SetValue("emvertex.trfit.P"        , 10 );
+  env.SetValue("emvertex.trfit.Pmin"     ,  1. );    // trfit.P = -2: lowest momentum, also for tracks without estimate
+  env.SetValue("emvertex.trfit.Pmax"     ,  100. );  // trfit.P = -2: highest momentum
   env.SetValue("emvertex.trfit.M"        ,  0.139);
   env.SetValue("emvertex.trfit.r2max", 5. );
   env.SetValue("emvertex.trfit.dzmax", 4000. );
@@ -326,8 +328,10 @@ void do_vertex(TEnv &env)
   bool do_trfit   = env.GetValue("emvertex.trfit.doit"     ,  1 );
   float pfit      = env.GetValue("emvertex.trfit.P"        , 10 );
   float mfit      = env.GetValue("emvertex.trfit.M"        ,  0.139);
+  float pmin      = env.GetValue("emvertex.trfit.Pmin"     ,  1. );
+  float pmax      = env.GetValue("emvertex.trfit.Pmax"     ,  100. );
   if(do_trfit) {
-    SetTracksErrors( *(gAli.eTracks), gCond, pfit );
+    SetTracksErrors( *(gAli.eTracks), gCond, pfit, pmin, pmax );
     //gAli.FitTracks(pfit,mfit );
   }
 
@@ -614,7 +618,7 @@ void DiscardImp(TEnv &env, EdbPVRec &v_vtx, float imp_max)
   }
 }
 //-----------------------------------------------------------------------------
-void SetTracksErrors(TObjArray &tracks, EdbScanCond &cond, float pfit)
+void SetTracksErrors(TObjArray &tracks, EdbScanCond &cond, float pfit, float pmin, float pmax)
 {
   int n = tracks.GetEntries();
   Log(2,"SetTracksErrors","refit %d tracks with a new errors",n);
@@ -628,8 +632,16 @@ void SetTracksErrors(TObjArray &tracks, EdbScanCond &cond, float pfit)
        s->SetErrors0();
        cond.FillErrorsCov( s->TX(),s->TY(), s->COV() );
      }
-     float p = pfit;                                          // trfit.P > 0: assumed momentum
-     if (p <= 0 && t->NF() > 0) p = t->GetSegmentF(0)->P();   // else the momentum of the tracking fit
+     
+    float p = pfit;                                               // trfit.P > 0: assumed momentum
+     if (pfit < -1.5) {                                            // trfit.P = -2: track momentum from the trk file (MCS)
+       p = t->P();
+       if (!(p > pmin)) p = pmin;                                  // too low, or no estimate
+       if (p > pmax)    p = pmax;                                  // too high, or infinite
+       t->SetSegmentsP(p);                                         // same value for the scattering term of the vertex fit
+     }
+     else if (p <= 0 && t->NF() > 0) p = t->GetSegmentF(0)->P();   // trfit.P = -1: momentum of the tracking fit
+
      if (p > 0) t->SetP(p);
      t->FitTrackKFS(false, cond.RadX0());
   }

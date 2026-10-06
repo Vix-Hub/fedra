@@ -21,10 +21,18 @@
 #include "EdbPhys.h"
 #include "EdbAffine.h"
 #include "EdbMomentumEstimator.h"
+#include "TFile.h"  
 #include <fstream>
 #include "TFitResult.h"
 #include <TH1F.h>
 #include <TH2F.h>
+
+#include <tuple>   
+#include <vector>
+
+#include "TRandom3.h"
+
+
 
 ClassImp(EdbMomentumEstimator);
 
@@ -33,7 +41,7 @@ using namespace TMath;
 //________________________________________________________________________________________
 EdbMomentumEstimator::EdbMomentumEstimator()
 {
-  eAlg   = 0; // default algorithm
+  eAlg   = 0; // default algorithm 
   eF1    = 0;
   eF1X   = 0;
   eF1Y   = 0;
@@ -69,7 +77,7 @@ void EdbMomentumEstimator::Set0()
   eStatus=-1;
   ePx=ePy=-99;
   eDPx=eDPy=-99;
-  ePXmin=ePXmax=ePYmin=ePYmax=-99;
+  ePXmin=ePXmax=ePYmin=ePYmax=-99;  
   eP=eDP=ePmin=ePmax = -99;
 }
 
@@ -77,10 +85,9 @@ void EdbMomentumEstimator::Set0()
 void EdbMomentumEstimator::SetParPMS_Mag()
 {
   // set the default values for parameters used in PMS_Mag
-  // eX0 = 5600;
-  eX0 = 3521;
+  eX0 = 4676;       //eX0 = 3504         eX0 = 3521 micron per tung simul      eX0 =  4566 micron per tung+emul simul      eX0 = 4676 micron per tung+emul dati       
 
-  eDTsErrorFun.SetParameters(0.0021, 0.0054,0,0,0);
+  eDTsErrorFun.SetParameters(0.0021, 0.0054,0,0,0);                  
   eDTxErrorFun.SetParameters(0.0021, 0.0093,0,0,0);
   eDTyErrorFun.SetParameters(0.0021, 0.0   ,0,0,0);
 }
@@ -92,7 +99,7 @@ void EdbMomentumEstimator::SetParPMS_Mag(Int_t type, Int_t parNumber, Double_t p
   if (type==2) eDTsErrorFun.SetParameter(parNumber,parvalue);
 }
 //________________________________________________________________________________________
-void EdbMomentumEstimator::Print()
+void EdbMomentumEstimator::Print()                                
 {
   printf("\nEdbMomentumEstimator:\n");
   printf("Algorithm: %s\n", AlgStr(eAlg).Data());
@@ -145,7 +152,11 @@ float EdbMomentumEstimator::PMS(EdbTrackP &tr)
       if(eStatus>0) return eP;
       else return -100.;     // todo
 
-  case 3: return PMScoordinate(eTrack);
+  //case 3: return PMScoordinate(eTrack);   //ho commentato questo quando ho modificato PMSccordinate in modo che restituisse l'arrey result
+  /*case 3: {
+    std::vector<float> result = PMScoordinate(eTrack);
+    return result[0];  // oppure result[1] se ti serve l'altro valore
+}*/
   case 4: return PMSang_corr(eTrack);
   }
   return -100;
@@ -478,36 +489,13 @@ float EdbMomentumEstimator::PMSang(EdbTrackP &tr)
 
 //___________________________________________________________________________________________________
 
-bool remove_outliers(TGraphErrors* graph, TF1* fitFunc, const double threshold) {
-  bool remove_points = false;
-  int idx = graph->GetN() - 1;
 
-  while (idx >= 0 && graph->GetN() > 2) {  
-      double x, y;
-      graph->GetPoint(idx, x, y);
-      double y_fit = fitFunc->Eval(x);
-      double residual = y - y_fit;
-
-      if (std::abs(residual) > threshold) {
-          graph->RemovePoint(idx);
-          remove_points = true;
-          idx--;
-      } else {
-          break;
-      }
-  }
-
-  return remove_points;
-}
-
-float EdbMomentumEstimator::PMScoordinate(EdbTrackP &tr)
+/*float EdbMomentumEstimator::PMScoordinate(EdbTrackP &tr)
 {
-  // Momentum estimation by coordinate method
+  // Momentum estimation by coordinate method            
   //
-  // April 2010 -- update May 2025
-
-  gErrorIgnoreLevel = kError; // suppress MINUIT warnings
-
+  // April 2010
+  
   int nseg = tr.N();
   int npl  = tr.Npl();
   
@@ -519,17 +507,17 @@ float EdbMomentumEstimator::PMScoordinate(EdbTrackP &tr)
 
   float ang = 0.;
 
-  /*
-  for (int i =0;i<tr.N();i++)
-    {
-      aas=tr.GetSegment(i);
-      float slx=aas->TY()*cos(-PHI)-aas->TX()*sin(-PHI);
-      float sly=aas->TX()*cos(-PHI)+ aas->TY()*sin(-PHI);
-      aas->Set(aas->ID(),aas->X(),aas->Y(),slx,sly,aas->W(),aas->Flag());
-    }
   
-  FitTrackLine(tr,xmean,ymean,zmean,txmean,tymean,wmean);    // calculate mean track parameters
-  */
+  //for (int i =0;i<tr.N();i++)
+    //{
+      //aas=tr.GetSegment(i);
+      //float slx=aas->TY()*cos(-PHI)-aas->TX()*sin(-PHI);
+      //float sly=aas->TX()*cos(-PHI)+ aas->TY()*sin(-PHI);
+      //aas->Set(aas->ID(),aas->X(),aas->Y(),slx,sly,aas->W(),aas->Flag());
+    //}
+  
+  //FitTrackLine(tr,xmean,ymean,zmean,txmean,tymean,wmean);    // calculate mean track parameters
+  
 
   
 
@@ -544,6 +532,8 @@ float EdbMomentumEstimator::PMScoordinate(EdbTrackP &tr)
   for(int i=0;i<npl;i++)
     {
       da[i]    = 0;
+      dax[i]   = 0;
+      day[i]   = 0;
       nentr[i] = 0;
     }
 
@@ -580,6 +570,8 @@ float EdbMomentumEstimator::PMScoordinate(EdbTrackP &tr)
 	      appy = (  DY1 * ((s2->Z()-s3->Z())/(s1->Z()-s2->Z())) - DY2  ) * (  DY1 * ((s2->Z()-s3->Z())/(s1->Z()-s2->Z())) - DY2  );
 
 
+	      dax[nr1] += appx;
+	      day[nr1] += appy;
 	      //da[nr1] += (  (((s2->X()-s1->X())*(s2->Z()-s3->Z())/(s1->Z()-s2->Z()))-(s3->X()-s2->X()))**2 + (((y[j]-y[i])*(z[j]-z[k])/(z[i]-z[j]))-(y[k]-y[j]))**2 ) /2. ; 
 	      da[nr1] += (appx + appy)/2.; 
 	      nentr[nr1] += 1;
@@ -596,129 +588,1015 @@ float EdbMomentumEstimator::PMScoordinate(EdbTrackP &tr)
       if(nentr[i]>0)
   {
     IsEmpty=false;
+    dax[i] = sqrt(dax[i]/nentr[i]);
+    day[i] = sqrt(day[i]/nentr[i]);
     da[i]  = sqrt(da[i]/nentr[i]);
   }
     }
   
   SafeDelete(eF1);
+  SafeDelete(eF1X);
+  SafeDelete(eF1Y);
   SafeDelete(eG);
+  SafeDelete(eGX);
+  SafeDelete(eGY);
 
   if(IsEmpty)return -99;
   eG  = new TGraphErrors();
+  eGX = new TGraphErrors();
+  eGY = new TGraphErrors();
 
-  // int t = 1315; //60 films (MC - Slavich)
-  int t = 1350; //57 films (Nagoya)
 
   int cont = 0;
-  for(int i=0;i<npl;i++) {
-      if(nentr[i]>eMinEntr) {
-	  eG->SetPoint(cont,i*t,da[i]);
+  for(int i=0;i<npl;i++)
+    {
+      if(nentr[i]>eMinEntr)
+	{
+	  eGX->SetPoint(cont,i*1300,dax[i]);
+	  eGX->SetPointError(cont,0,dax[i]/Sqrt(nentr[i]));
+	  eGY->SetPoint(cont,i*1300,day[i]);
+	  eGY->SetPointError(cont,0,day[i]/Sqrt(nentr[i]));
+	  eG->SetPoint(cont,i*1300,da[i]);
 	  eG->SetPointError(cont,0,da[i]/Sqrt(nentr[i]));
 	  cont++;
-	  } 
-  }  
+	}
+    }  
   if(cont==0)return -99;
-  if(cont==1)return -98;
-
+  eF1X = MCSCoordErrorFunction("eF1X",tmean,eX0);
+  eF1X->SetParLimits(0,0.0001,100);
+  eF1X->SetParLimits(1,0.0001,100);
+  eF1X->SetParameter(0,5);                             // starting value for momentum in GeV
+  eF1X->SetParameter(1,10);                              // starting value for coordinate error
+  
+  eF1Y = MCSCoordErrorFunction("eF1Y",tmean,eX0); 
+  //eF1Y->SetRange(0,Min(57,maxY));
+  eF1Y->SetParLimits(0,0.0001,100);
+  eF1Y->SetParLimits(1,0.0001,100);
+  eF1Y->SetParameter(0,5);                             // starting value for momentum in GeV
+  eF1Y->SetParameter(1,10);                              // starting value for coordinate error
   
   eF1 = MCSCoordErrorFunction("eF1",tmean,eX0);
   //eF1->SetRange(0,Min(57,max3D));
   eF1->SetParLimits(0,0.0,100);
-  // eF1->SetParLimits(1,0.0,100);
+  eF1->SetParLimits(1,0.0,100);
   eF1->SetParameter(0,5);                             // starting value for momentum in GeV
-  // eF1->SetParameter(1,0.15);                              // starting value for coordinate error  
-  eF1->FixParameter(1,0.15);                              // starting value for coordinate error  
+  eF1->SetParameter(1,10);                              // starting value for coordinate error  
+   
+  const char *fitopt = "MQ"; //MQR
+  eG ->Fit(eF1, fitopt);
+  eGX->Fit(eF1X,fitopt);
+  eGY->Fit(eF1Y,fitopt);
 
-  const char *fitopt = "MQS"; //MQR
-  TFitResultPtr eGResult = eG ->Fit(eF1, fitopt);
-  if (eGResult->IsValid()){
-    eP  = 1./sqrt(eF1->GetParameter(0));
-  } else {
-    eP = -10;      
+
+  eP  = 1./sqrt(eF1->GetParameter(0));
+  ePx = 1./sqrt(eF1X->GetParameter(0));
+  ePy = 1./sqrt(eF1Y->GetParameter(0));
+  return eP;
+}*/
+
+
+float EdbMomentumEstimator::PMScoordinate(EdbTrackP &tr, float sigma_res, float X0, int thickness, bool AddSmear)                               
+{ 
+  gStyle->SetOptFit(1111);                
+
+  TRandom3 rng(12345); // inizializza generatore Mersenne Twister con seed fisso
+  float offset_sigma = 0.15; // sigma dello smearing in micron   
+
+
+  int trackEvt = tr.GetSegmentFirst()->MCEvt();
+     
+  int nseg = tr.N();
+  int npl  = tr.Npl();  
+  
+ 
+  float xmean0,ymean0,zmean0,txmean0,tymean0,wmean0;
+  FitTrackLine(tr,xmean0,ymean0,zmean0,txmean0,tymean0,wmean0);    // calculate mean track parameters
+  float tmean=TMath::Sqrt(txmean0*txmean0+ tymean0*tymean0);
+ 
+  float ang = 0.;
+ 
+ 
+  //int minentr  = eMinEntr;               // min number of entries in the cell, should not be set smaller than 5
+  int nr1,nr2;
+ 
+  float dx1,dx2,dy1,dy2,DX1,DY1,DX2,DY2,appx,appy;
+ 
+  TVectorF da(npl), dax(npl), day(npl);
+  TArrayI  nentr(npl);                  //arrey che tiene traccia di tutte le triplette)
+  TArrayI nentr_indep(npl);             //arrey che tiene traccia delle sole triplette indipendenti (da usare per errore su eG)
+
+  std::vector<std::pair<int, int>> used_ranges[npl];    //array (lungo npl) in cui ogni el è un vettore di intervalli di scattering (centerPID, endPID). Serve a tracciare le triplette indip già aggiunte per ciascuna cell length
+  
+ 
+  for(int i=0;i<npl;i++)      
+    {
+      da[i]    = 0;
+      dax[i]   = 0;
+      day[i]   = 0;
+      nentr[i] = 0;
+      nentr_indep[i] = 0;
+    }
+ 
+  EdbSegP *s1=0,*s2=0,*s3=0;
+ 
+  
+  for(int i =0;i<=nseg-3;i++)                   // cycle by the first  seg
+    {
+      s1 = tr.GetSegment(i);
+      for(int j =i+1;j<=nseg-2;j++)             // cycle by the second seg
+    {
+      s2 = tr.GetSegment(j);
+      for(int k =j+1;k<=nseg-1;k++)         // cycle by the third  seg
+        {
+          s3 = tr.GetSegment(k);
+          
+          nr1 = TMath::Abs(s1->PID()-s2->PID());
+          nr2 = TMath::Abs(s2->PID()-s3->PID());
+          if(nr1!=nr2) continue;            // continue if (s1,s2) and (s2,s3) correspond to different cells
+
+
+
+          // Applica offset gaussiano a X e Y per simulare disallineamento
+          if (AddSmear){
+          float x1 = s1->X() + rng.Gaus(0, offset_sigma);
+          float x2 = s2->X() + rng.Gaus(0, offset_sigma);
+          float x3 = s3->X() + rng.Gaus(0, offset_sigma);
+
+          float y1 = s1->Y() + rng.Gaus(0, offset_sigma);
+          float y2 = s2->Y() + rng.Gaus(0, offset_sigma);
+          float y3 = s3->Y() + rng.Gaus(0, offset_sigma); 
+          
+          dx1 = x2 - x1;
+          dx2 = x3 - x2;
+          dy1 = y2 - y1;
+          dy2 = y3 - y2; 
+          }
+          else{                                                              
+          dx1 = s2->X()-s1->X();
+          dx2 = s3->X()-s2->X();
+          dy1 = s2->Y()-s1->Y();
+          dy2 = s3->Y()-s2->Y();  
+          }  
+             
+          
+          ang = 0; // ang is the rotation angle to get trasverse and longitudinal coordinates; not yet implemented 
+          DX1 = cos(ang)*dx1+sin(ang)*dy1;
+          DY1 = cos(ang)*dy1-sin(ang)*dx1;
+          
+          DX2 = cos(ang)*dx2+sin(ang)*dy2;
+          DY2 = cos(ang)*dy2-sin(ang)*dx2;
+ 
+          appx = (  DX1 * ((s2->Z()-s3->Z())/(s1->Z()-s2->Z())) - DX2  ) * (  DX1 * ((s2->Z()-s3->Z())/(s1->Z()-s2->Z())) - DX2  );  
+          appy = (  DY1 * ((s2->Z()-s3->Z())/(s1->Z()-s2->Z())) - DY2  ) * (  DY1 * ((s2->Z()-s3->Z())/(s1->Z()-s2->Z())) - DY2  );
+ 
+ 
+          dax[nr1] += appx;
+          day[nr1] += appy;
+          //da[nr1] += (  (((s2->X()-s1->X())*(s2->Z()-s3->Z())/(s1->Z()-s2->Z()))-(s3->X()-s2->X()))**2 + (((y[j]-y[i])*(z[j]-z[k])/(z[i]-z[j]))-(y[k]-y[j]))**2 ) /2. ; 
+          da[nr1] += (appx + appy)/2.; 
+          nentr[nr1] += 1;
+
+
+          /*int pid2 = s2->PID();   
+          int pid3 = s3->PID();
+          int start_current = std::min(pid2, pid3);    //individio l'inizio dell'intervallo di scattering per la tripletta corrente (seg centrale)
+          int end_current = std::max(pid2, pid3);      //individio la fine dell'intervallo di scattering per la tripletta corrente (seg finale)
+
+
+          //Verifica se la tripletta corrente è indip (Scopo: Contare solo le triplette indip per ciascuna cell length (cioè per ciascun valore di nr1))
+          bool isIndependent = true;                    //variabile booleana che presuppone che la tripletta corrente (s1, s2, s3) sia indip
+          for (auto& range : used_ranges[nr1]) {   //itera su tutti gli intervalli di scattering (pid2, pid3) delle triplette già contate come indip per questo valore di cell length (nr1); used_ranges[nr1] è un vettore che contiene per ogni tripletta indip la coppia (pid2, pid3)
+            int start = range.first;                //estrae start=pid2 e end=pid3 di ciascuna tripletta indip già salvata per confrontarli con quelli della tripletta corrente
+            int end = range.second;
+            if (!(end_current <= start || start_current >= end)) {     //pid3 <= start || pid2 >= end è la condizione di NON sovrapposizione degli intervalli di scattering
+              isIndependent = false;                   //se c'è sovrapposizone il bool isIndependent viene messo a false
+              break;
+            }
+          }
+
+          if (isIndependent) {                  //se la tripletta corrente è indip allora viene registrata in used_ranges[nr1]    
+            used_ranges[nr1].emplace_back(start_current, end_current);     //emplace_back aggiunge la coppia (pid2, pid3) della tripletta corrente ala lista di intervalli di scattering per la cel length nr1
+            nentr_indep[nr1] += 1;             //incrementa il contatore delle triplette indip per quel valore di cell length
+          }*/
+ 
+      }//end cycle 3rd seg (seg k)
+ 
+  }//end cycle 2nd seg (seg j)
+ 
+    }//end cycle 1st seg (seg i)
+  
+  bool IsEmpty=true; 
+  for(int i=0;i<npl;i++)
+    {
+      if(nentr[i]>0)
+  {
+    IsEmpty=false;
+    dax[i] = TMath::Sqrt(dax[i]/nentr[i]);
+    day[i] = TMath::Sqrt(day[i]/nentr[i]);
+    da[i]  = TMath::Sqrt(da[i]/nentr[i]);
   }
-
-  const float minIncrease = 0.1;
-
-  TGraphErrors* eG_inc = new TGraphErrors();
-  int nPoints = eG->GetN();
+    }
   
-  double x_prev, y_prev;
-  eG->GetPoint(0, x_prev, y_prev);
-  double ex_prev = eG->GetErrorX(0);
-  double ey_prev = eG->GetErrorY(0);
-  
-  eG_inc->SetPoint(0, x_prev, y_prev);
-  eG_inc->SetPointError(0, ex_prev, ey_prev);
-  
-  int pt_count = 1;
-  for (int i = 1; i < nPoints; ++i) {
-      double x, y;
-      eG->GetPoint(i, x, y);
-      double ex = eG->GetErrorX(i);
-      double ey = eG->GetErrorY(i);
-  
-      if (y >= y_prev + minIncrease) {
-          eG_inc->SetPoint(pt_count, x, y);
-          eG_inc->SetPointError(pt_count, ex, ey);  
-          y_prev = y;
-          ++pt_count;
-      } else break;
-  }
-
-  // TGraphErrors* eG_inc_init = nullptr; 
-  // TGraphErrors* eG_inc_post1 = nullptr;
-  // TGraphErrors* eG_inc_post2 = nullptr; 
+  //SafeDelete(eF1);
+  //SafeDelete(eF1X);   
+  //SafeDelete(eF1Y);     
+  SafeDelete(eG);
+  //SafeDelete(eGX);                              
+  //SafeDelete(eGY);               
+ 
+if(IsEmpty)return -99;          
 
 
-  if (eG_inc->GetN() > 2) {
-    TFitResultPtr refitResult = eG_inc->Fit(eF1, fitopt);
-    if (refitResult->IsValid()) {
-      eP = 1. / sqrt(eF1->GetParameter(0));
+  // Verifica il numero di valori non nulli in nentr
+  /*int nonZeroNentr = 0;
+  for (int i = 0; i < npl; i++) {
+    printf("nentr[%d] = %d (ID: %d)\n", i, nentr[i], tr.ID());
+   if (nentr[i] > eMinEntr) nonZeroNentr++;
+ }
+ printf("per ID %d: Numero di elementi > 0 di nentr= %d\n", tr.ID(), nonZeroNentr);
 
-      // eG_inc_init = (TGraphErrors*)eG_inc->Clone("eG_inc_init");
 
-      const double resisualThreshold = 0.2;
+// Se ci sono esattamente 2 valori maggiori di 0, imposta eP, ePx, ePy a -98
+ if (nonZeroNentr == 2) return -98;  */
 
-      bool remove_1 = remove_outliers(eG_inc, eF1, resisualThreshold);
-      bool secondIteration = false;
 
-      if (remove_1) {
-        int remainingPoints = eG_inc->GetN();
-        if (remainingPoints > 2) {
-          refitResult = eG_inc->Fit(eF1, fitopt);
-          if (refitResult->IsValid()) {
-            eP = 1. / sqrt(eF1->GetParameter(0));
-            // eG_inc_post1 = (TGraphErrors*)eG_inc->Clone("eG_inc_post1");
-            secondIteration = true;
-          } 
-        } 
+//DEBUG PER TRIPLETTE INDIPENDENTI
+/*printf("\n===== Verifica triplette per track ID %d =====\n", tr.ID());
+for (int i = 0; i < npl; ++i) {
+  if (nentr[i] > 0) {
+    printf("Cell length %2d -> Total: %3d, Independent: %3d\n", i, nentr[i], nentr_indep[i]);
+    
+    // Stampa delle triplette indipendenti
+    if (!used_ranges[i].empty()) {
+      printf("  Independent triplets (PID2, PID3):\n");
+      for (auto& range : used_ranges[i]) {
+        printf("    (%d, %d)\n", range.first, range.second);
       }
-
-      if (secondIteration) {
-        bool remove_2 = remove_outliers(eG_inc, eF1, resisualThreshold);
-
-        if (remove_2) {
-          int remainingPoints = eG_inc->GetN();
-          if (remainingPoints > 2) {
-            refitResult = eG_inc->Fit(eF1, fitopt);
-            if (refitResult->IsValid()) {
-              eP = 1. / sqrt(eF1->GetParameter(0));
-              // eG_inc_post2 = (TGraphErrors*)eG_inc->Clone("eG_inc_post2");
-            } 
-          } 
-        }
-      } 
     }
   }
+}*/
 
-  // delete eG_inc_init;
-  // delete eG_inc_post1;
-  // delete eG_inc_post2;
-  delete eG_inc;  
-  return eP;
+
+
+
+  // Crea i grafici solo se ci sono almeno due valori non nulli
+  //if (nonZeroNentr > 1) {
+  eG  = new TGraphErrors();                 
+  //eGX = new TGraphErrors();
+  //eGY = new TGraphErrors();      
+  
+ 
+  //int t = 1315; //per simulazioni (60 emulsioni russe per brick)   
+  int t = 1350; //per dati (57 emulsioni di Nagoya per brick)                          
+  int cont = 0;
+
+  bool firstPointInserted = false;   //bool per identificare il primo punto inserito in eG          
+
+  for(int i=0;i<npl;i++)    
+    {
+      if(nentr[i]>eMinEntr)     
+    {
+      // Stampa i valori prima di aggiungerli ai grafici
+      //printf("Track ID %d - i = %d, z = %d, da = %.5f, dax = %.5f, day = %.5f, nentr = %d\n",
+      //tr.ID(), i, i*t, da[i], dax[i], day[i], nentr[i]);
+
+      /*eGX->SetPoint(cont,i*t,dax[i]);    
+      eGX->SetPointError(cont,0,dax[i]/TMath::Sqrt(nentr[i]));
+      eGY->SetPoint(cont,i*t,day[i]);
+      eGY->SetPointError(cont,0,day[i]/TMath::Sqrt(nentr[i]));        */                    
+      eG->SetPoint(cont,i*thickness,da[i]);
+      eG->SetPointError(cont,0,da[i]/TMath::Sqrt(2 * nentr[i]));      //HO AGGIUNTO UN 2 SOTTO RADICE PER IL CALCOLO DELL'ERRORE!!!!!!  E ANCHE IL CONTATORE DELLE SOLE TRIPLETTE INDIP nentr_indep[i] AL POSTO DI nentr
+      cont++;  
+       
+        
+    }
+    }  
+
+   //Istruzioni per costruire la distribuzione dell'RMS del primo punto di eG
+      // Inserisci solo il primo valore di eG nell’istogramma ma solo per le tracce che hanno almeno due pt su eG
+   /*if (cont > 1 && !firstPointInserted) {
+      TH1F *h_Temp_da0 = new TH1F("h_da0", "Distribution of first RMS value; RMS[1];N_{tracks}", 2000, 0, 2); 
+      
+      double x0, y0;     
+      eG->GetPoint(0, x0, y0);  // recupera il primo punto del grafico
+      h_Temp_da0->Fill(y0);
+
+      // <<< Qui stampi la info utile  
+      //std::cout << "Track ID " << tr.ID() << ": primo punto inserito in eG = da[0] = " << da[0] << std::endl;   
+
+      TFile *outFile = new TFile("RMS_punto0.root", "UPDATE");   
+      if (outFile && outFile->IsOpen()) {
+        TH1F *hOld_da0 = (TH1F*)outFile->Get("h_da0");
+        if (hOld_da0) {  
+          hOld_da0->Add(h_Temp_da0);
+        } else {
+          hOld_da0 = (TH1F*)h_Temp_da0->Clone("h_da0");
+        }
+
+        outFile->cd();
+        hOld_da0->Write("h_da0", TObject::kOverwrite);
+        delete hOld_da0;
+        outFile->Close();
+      } else {
+        std::cerr << "Errore nell'apertura del file ROOT per il salvataggio." << std::endl;       
+      }
+
+      delete h_Temp_da0;         
+      firstPointInserted = true;    
+    }    */                                           
+
+  /*std::cout << "[INFO] Differenze tra ordinate successive di eG (Δy = y_{i+1} - y_i):\n";
+  for (int i = 0; i < eG->GetN() - 1; ++i) {
+    double x1, y1, x2, y2;
+    eG->GetPoint(i, x1, y1);
+    eG->GetPoint(i+1, x2, y2);
+    double dy = y2 - y1;
+    std::cout << "Δy[" << i << "] = y[" << i+1 << "] - y[" << i << "] = "
+              << y2 << " - " << y1 << " = " << dy << std::endl;
+  }*/
+    
+  
+                                                           
+if(cont==0)return -99;   //cont = numero di punti nel grafico
+if(cont==1)return -98;                                                     
+  
+ 
+  // Calcola il valore di eP, ePx, ePy solo se i grafici sono stati creati                                              
+  /*eF1X = MCSCoordErrorFunction("eF1X",tmean,X0); 
+  eF1X->SetParLimits(0,0.0001,100);
+  eF1X->SetParLimits(1,0.0001,100);
+  eF1X->SetParameter(0,5);                             // starting value for momentum in GeV
+  eF1X->SetParameter(1,10);    */                          // starting value for coordinate error
+    
+  
+  /*eF1Y = MCSCoordErrorFunction("eF1Y",tmean,X0);
+  //TF1* eF1Y = new TF1("eF1Y",Form("sqrt(([1])**2+(2./3)*((x*sqrt(1+%f**2))**3)*(0.0136**2)*[0]/%f)",tmean,X0));
+  //std::cout << "[DEBUG] DOPO DEL FIT F1_Y\n";   
+  //eF1Y->SetRange(0,Min(57,maxY));
+  eF1Y->SetParLimits(0,0.0001,100);                                                                                                          
+  eF1Y->SetParLimits(1,0.0001,100);                
+  eF1Y->SetParameter(0,5);                             // starting value for momentum in GeV
+  eF1Y->SetParameter(1,10);   */                           // starting value for coordinate error
+  
+      
+  //eF1 = MCSCoordErrorFunction("eF1",tmean,X0);                   
+  if (!eF1) eF1 = MCSCoordErrorFunction("eF1");   // created once, same formula for all tracks
+  eF1->SetParError(0, 0.);                        // no memory of the previous track  
+  eF1->SetParLimits(0,0.0,100);          
+  eF1->SetParameter(0,5);                             // starting value for momentum in GeV
+  eF1->SetParameter(1, TMath::Sqrt(6) * sigma_res);                              // starting value for coordinate error        eF1->SetParameter(1, TMath::Sqrt(6) * 0.15);     
+
+  eF1->FixParameter(1, TMath::Sqrt(6) * sigma_res);                                 //HO AGGIUNTO SQRT(6) AL PARAMETRO DI RISOLUZIONE IN POSIZIONE!!!!!!!      eF1->FixParameter(1, TMath::Sqrt(6) * 0.15);             
+  //eF1->SetParLimits(1, TMath::Sqrt(6)*0.5*sigma_res, TMath::Sqrt(6)*1.5*sigma_res);                                                                                          
+    
+   eF1->SetParameter(2, tmean);                       
+   eF1->FixParameter(2, tmean);
+   eF1->SetParameter(3, X0);                     
+   eF1->FixParameter(3, X0);                                                               
+
+                           
+  gErrorIgnoreLevel = kError; // sopprime i warning di Minuit                  
+  const char *fitopt = "MQS"; //MQR                                                                   
+        
+
+
+  TFitResultPtr eGResult;                                                                                            
+  eGResult = eG->Fit(eF1, fitopt);                                         
+  int status = eGResult;                                                                       
+
+ 
+  if (eGResult->IsValid()){
+    eP  = 1./TMath::Sqrt(eF1->GetParameter(0));
+    //printf("\n TrackEvt = %d TrackID = %d, eP originario = %.5f\n", eP, trackEvt, tr.ID());  
+  } else {
+    //std::cout << "[WARN] Fit NON valido per traccia ID: " << tr.ID() << std::endl;  
+    eP = -10;
+     /*
+    // Salvataggio grafico eG in caso di fit divergente
+    TFile *divFile = new TFile("MCSgraphs_DivergentFit.root", "UPDATE"); // apri in modalità update
+    if (divFile && divFile->IsOpen()) {
+      eG->SetName(Form("eG_track%d_div", tr.ID()));  
+      eG->SetTitle(Form("eG_Track%d Divergent Fit", tr.ID()));
+      eG->Write();
+      divFile->Close(); */
+    /*std::cout << "Grafico eG salvato in MCSgraphs_divergent.root per fit divergente." << std::endl;*/
+  //} else {
+    /*std::cerr << "Errore nell'apertura del file ROOT per il salvataggio del fit divergente." << std::endl;*/
+  //}
+  }
+
+ /*  //COMMENTARE DA QUA
+// Calcolo per ogni traccia della variabile SOMMA DEGLI SCARTI NORMALIZZATI PER L'ERRORE e del CHI2
+float sumScarti = 0.0;
+float chi2 = 0.0;
+
+if (cont > 1 && eP < 1e9) {
+  for (int i = 0; i < cont; ++i) {
+    double x, y;
+    eG->GetPoint(i, x, y);
+    double ey = eG->GetErrorY(i);
+
+    // Sicurezza: evitare divisione per zero
+    if (ey == 0) continue;
+
+    double valore_fit = eF1->Eval(x);
+    double scarto = (y - valore_fit) / ey;
+
+    sumScarti += scarto;
+    chi2 += scarto * scarto;
+  }
+
+
+  // --- SCRITTURA SU FILE DI TESTO delle info su chi2 e sumScarti per ogni traccia ---
+  int trackEvt = tr.GetSegmentFirst()->MCEvt();
+  std::ofstream outFileTxt("Info_Chi_Sum.txt", std::ios::app); // "append" mode
+  if (outFileTxt.is_open()) {
+    outFileTxt << "EventID: " << trackEvt
+             << " nseg: " << nseg
+             << "   Chi2: " << chi2
+             << "   SumScarti: " << sumScarti << std::endl;
+    outFileTxt.close();
+  } else {
+    std::cerr << "Errore nell'apertura del file Info_Chi_Sum.txt per la scrittura." << std::endl;
+  }
+
+
+  // Istogrammi temporanei
+  TH1F *hTempChi2   = new TH1F("hTempChi2", "Chi^{2} Distribution; Chi^{2}; N_{tracks}", 2000, 0, 2000);  
+  TH2F *hTemp_sumScarti_chi2 = new TH2F("hTemp_sumScarti_chi2
+  TH1F *hTempScarti = new TH1F("hTempScarti", "Distribution of Sum of Normalized Residuals;Sum; N_{tracks}", 2000, -1000, 1000);", "Sum of Norm. Residuals vs Chi^{2}; Chi^{2}; Sum", 2000, 0, 2000, 2000, -1000, 1000);
+
+  hTempScarti->Fill(sumScarti);
+  hTempChi2->Fill(chi2);
+  hTemp_sumScarti_chi2->Fill(chi2, sumScarti);
+
+  TFile *outFile = new TFile("SumScarti.root", "UPDATE");
+  if (outFile && outFile->IsOpen()) {
+    // Aggiorna hSumScarti
+    TH1F *hOldScarti = (TH1F*)outFile->Get("hSumScarti");
+    if (hOldScarti) {
+      hOldScarti->Add(hTempScarti);
+    } else {
+      hOldScarti = (TH1F*)hTempScarti->Clone("hSumScarti");
+    }
+
+    // Aggiorna hChi2
+    TH1F *hOldChi2 = (TH1F*)outFile->Get("hChi2");
+    if (hOldChi2) {
+      hOldChi2->Add(hTempChi2);
+    } else {
+      hOldChi2 = (TH1F*)hTempChi2->Clone("hChi2");
+    }
+
+    // Aggiorna h_sumScarti_chi2
+    TH2F *hOld_sumScarti_chi2 = (TH2F*)outFile->Get("h_sumScarti_chi2");
+    if (hOld_sumScarti_chi2) {
+      hOld_sumScarti_chi2 ->Add(hTemp_sumScarti_chi2);
+    } else {
+      hOld_sumScarti_chi2 = (TH2F*)hTemp_sumScarti_chi2->Clone("h_sumScarti_chi2");
+    }
+
+    // Scrivi gli istogrammi nel file
+    if (hOldScarti) {
+      outFile->cd();
+      hOldScarti->Write("hSumScarti", TObject::kOverwrite);
+      delete hOldScarti;
+    }
+
+    if (hOldChi2) {
+      outFile->cd();
+      hOldChi2->Write("hChi2", TObject::kOverwrite);
+      delete hOldChi2;
+    }
+
+    if (hOld_sumScarti_chi2) {
+      outFile->cd();
+      hOld_sumScarti_chi2->Write("h_sumScarti_chi2", TObject::kOverwrite);
+      delete hOld_sumScarti_chi2;
+    }
+
+    outFile->Close();
+  } else {
+    std::cerr << "Errore nell'apertura del file ROOT per il salvataggio." << std::endl;
+  }
+
+  delete hTempScarti;
+  delete hTempChi2;
+  delete hTemp_sumScarti_chi2;
+
+
+
+
+  //REFIT NEL CASO IN CUI IL CHI2 SIA > DEL CHI2_LIMITE PER ALPHA=0.05
+  int FreeParameter_eF1 = 1;          //numero di parametri liberi delle funz eF1 = 1 (perchè ho fissato il parametro [1])   
+  int ndf = cont - FreeParameter_eF1;   //numero di gradi di liberà del chi2 = n.di pt del TGraph - n. parametri liberi di eF1
+  
+
+  if (ndf > 1) {    //ndf>1 equivale a dire che la traccia deve avere cont>2, cioè almeno 3 pt sul Tgraph  
+    double chi2_critical = TMath::ChisquareQuantile(0.95, ndf);   //chi2 limite definito da una significatvità alpha=0.05
+    if (chi2 > chi2_critical) {
+      // Stampa su file il warning
+      std::ofstream warnFile("FitWarnings.txt", std::ios::app);  // modalità append
+      if (warnFile.is_open()) {
+        warnFile << "[WARN] Fit sospetto per traccia Evt " << trackEvt
+                << ": chi2 = " << chi2
+                << " > chi2_critico = " << chi2_critical << std::endl;
+      } else {
+        std::cerr << "Errore apertura file FitWarnings.txt" << std::endl;  
+      }
+
+      int npoints_refit = (cont > 10) ? 10 : std::max(3, cont / 2);  //n. pt x refit = 10 se la traccia ha più di 10 pt sul Tgraph, è = metà dei pt iniziali (ma almeno pari a 3) se la traccia ha 10 o meno pt sul Tgraph
+
+      TGraphErrors* eG_short = new TGraphErrors();    //creazione di un unovo TGraph con soli 10 punti
+      for (int i = 0; i < npoints_refit; ++i) {
+        double x, y;
+        eG->GetPoint(i, x, y);
+        double ex = eG->GetErrorX(i);
+        double ey = eG->GetErrorY(i);
+        eG_short->SetPoint(i, x, y);
+        eG_short->SetPointError(i, ex, ey);
+      }
+
+      TFitResultPtr refitResult = eG_short->Fit(eF1, fitopt);
+      if (refitResult->IsValid()) {
+        eP = 1. / sqrt(eF1->GetParameter(0));          // aggiorna eP con il nuovo fit
+
+        // Ricalcolo chi2 dopo il refit
+        double chi2_refit = 0.0;
+        for (int i = 0; i < npoints_refit; ++i) {
+          double x, y;
+          eG_short->GetPoint(i, x, y);
+          double ey = eG_short->GetErrorY(i);
+          if (ey == 0) continue;
+          double yfit = eF1->Eval(x);
+          double scarto = (y - yfit) / ey;
+          chi2_refit += scarto * scarto;
+        }
+
+        // Scrive anche chi2_refit ed eP nel file
+        if (warnFile.is_open()) {
+          warnFile << "       --> Nuovo chi2 dopo refit con " << npoints_refit
+                  << " punti: " << chi2_refit << std::endl;
+          warnFile << "       --> [INFO] Fit limitato valido. Nuovo eP = " << eP << "\n";
+          warnFile.close();                 
+        }
+
+        // Salva grafico refittato nel file separato
+        TFile *refitFile = new TFile("MCSgraphs_refit.root", "UPDATE");
+        if (refitFile && refitFile->IsOpen()) {
+          eG_short->SetName(Form("eG_refit_track%d", trackEvt));  //tr.ID()
+          eG_short->SetTitle(Form("Refit - Track Evt %d", trackEvt));  //tr.ID()
+          eG_short->Write();
+          refitFile->Close();
+        } else {
+          std::cerr << "Errore apertura file per salvataggio refit.\n";
+        }
+      } else {
+        std::cerr << "[WARN] Refit su 10 punti fallito per traccia Evt: " << trackEvt << "\n"; //tr.ID()
+      }
+
+      delete eG_short; // Libera memoria
 }
 
+}
+} */   //A QUA
 
+  //SCOMMENTARE DA QUA 
+//TH1D *hTemp_DecreasingY = new TH1D("hTemp_DecreasingY", "Distribution of #Delta y (y_{i+1} < y_{i});#Delta y [#mum];Counts", 1000, -10, 10);
+
+//const float maxDecrease = 0.1; // tolleranza  0.1 micron  
+const float minIncrease = 0.1;        
+
+const double alpha = 0.8;                                                         
+
+TGraphErrors* eG_crescente = new TGraphErrors();      
+int nPoints = eG->GetN();
+    
+double x_prev, y_prev;
+eG->GetPoint(0, x_prev, y_prev);     
+double ex_prev = eG->GetErrorX(0);            
+double ey_prev = eG->GetErrorY(0);                 
+      
+eG_crescente->SetPoint(0, x_prev, y_prev);
+eG_crescente->SetPointError(0, ex_prev, ey_prev);
+
+int pt_count = 1;
+for (int i = 1; i < nPoints; ++i) {
+    double x, y;
+    eG->GetPoint(i, x, y);
+    double ex = eG->GetErrorX(i);
+    double ey = eG->GetErrorY(i);
+
+    //if (y >= y_prev - maxDecrease) {    
+    if (y >= y_prev + minIncrease) {    
+    //if (y >= y_prev - alpha * ey){
+        eG_crescente->SetPoint(pt_count, x, y);
+        eG_crescente->SetPointError(pt_count, ex, ey);           
+        y_prev = y;
+        ++pt_count;
+    } else {
+      //double deltaY = y - y_prev;
+      //hTemp_DecreasingY->Fill(deltaY);
+        // Appena un punto non soddisfa la condizione, interrompe il ciclo di riempimento di eG_crescente
+        break;
+    }
+}
+
+//printf("Pt su eG_crescente (prima di iter.): %d\n", pt_count);  //A QUA         
+
+
+/*lasciare commentato
+if (pt_count > 2) {
+    TFitResultPtr refitResult = eG_crescente->Fit(eF1, fitopt);
+    if (refitResult->IsValid()) {
+        eP = 1. / sqrt(eF1->GetParameter(0));  // aggiorna eP con il nuovo fit
+
+        std::cout << "Differenze (residui) tra punti e curva di fit per traccia " << trackEvt << ":\n";
+        const double residuoThreshold = 0.2;
+        bool refitNeeded = false;
+
+        int nCrescentPoints = eG_crescente->GetN();
+        int idx = nCrescentPoints - 1;
+
+        // Controlla partendo dall'ultimo punto e rimuove i punti finali con residuo > soglia
+        while (idx >= 0 && eG_crescente->GetN() > 2) {
+            double x, y;
+            eG_crescente->GetPoint(idx, x, y);
+            double y_fit = eF1->Eval(x);
+            double residuo = y - y_fit;
+
+            std::cout << "Punto " << idx << ": x = " << x << ", y = " << y << ", y_fit = " << y_fit << ", residuo = " << residuo << "\n";
+
+            if (std::abs(residuo) > residuoThreshold) {
+                std::cout << "[INFO] Punto " << idx << " ha residuo > 0.2 e sarà rimosso.\n";
+                eG_crescente->RemovePoint(idx);
+                refitNeeded = true;
+                idx--;  // Passa al punto precedente
+            } else {
+                break;  // Interrompe il controllo se il punto è accettabile
+            }
+        }
+
+        // Se sono stati rimossi punti, esegui di nuovo il fit
+        if (refitNeeded && eG_crescente->GetN() > 2) {
+            std::cout << "[INFO] Eseguo refit dopo rimozione punti anomali...\n";
+            refitResult = eG_crescente->Fit(eF1, fitopt);
+            if (refitResult->IsValid()) {
+                eP = 1. / sqrt(eF1->GetParameter(0));
+                std::cout << "[INFO] Refit riuscito dopo rimozione outlier.\n";
+
+                // --- Calcolo e stampa dei nuovi residui ---
+                std::cout << "Residui DOPO refit per traccia " << trackEvt << ":\n";
+                int newN = eG_crescente->GetN();
+                for (int i = 0; i < newN; ++i) {
+                    double x, y;
+                    eG_crescente->GetPoint(i, x, y);
+                    double y_fit = eF1->Eval(x);
+                    double residuo = y - y_fit;
+                    std::cout << "Punto " << i << ": x = " << x << ", y = " << y << ", y_fit = " << y_fit << ", residuo = " << residuo << "\n";
+                }
+
+                // Salva grafico refittato nel file separato
+                TFile *refitFile = new TFile("MCSgraphs_crescenti_refit.root", "UPDATE");
+                if (refitFile && refitFile->IsOpen()) {
+                    eG_crescente->SetName(Form("eG_crescente_track%d", trackEvt));
+                    eG_crescente->SetTitle(Form("Refit - Track Evt %d", trackEvt));
+                    eG_crescente->Write();
+                    refitFile->Close();
+                } else {
+                    std::cerr << "Errore apertura file per salvataggio refit.\n";
+                }
+
+            } else {
+                std::cerr << "[WARN] Refit fallito dopo rimozione outlier per traccia Evt: " << trackEvt << "\n";
+            }
+        }
+    } else {
+        std::cerr << "[WARN] Refit TGraph crescente fallito per traccia Evt: " << trackEvt << "\n";
+    }
+}*/
+
+   //SCOMMENTARE DA QUA
+/*auto rimuovi_outlier_finali = [&](TGraphErrors* graph, TF1* fitFunc, const double threshold) -> bool {
+    bool puntiRimossi = false;
+    int idx = graph->GetN() - 1;
+
+    while (idx >= 0 && graph->GetN() > 2) {  
+        double x, y;
+        graph->GetPoint(idx, x, y);
+        double y_fit = fitFunc->Eval(x);
+        double residuo = y - y_fit;
+
+        //std::cout << "Punto " << idx << ": x = " << x << ", y = " << y << ", y_fit = " << y_fit << ", residuo = " << residuo << "\n";
+
+        if (std::abs(residuo) > threshold) {
+            //std::cout << "[INFO] Punto " << idx << " ha residuo > " << threshold << " e sarà rimosso.\n";
+            graph->RemovePoint(idx);
+            puntiRimossi = true;
+            idx--;
+        } else {
+            break;
+        }
+    }
+
+    return puntiRimossi;
+}; */
+
+//Versione in cui rimuovo anche outliers intermedi:
+auto rimuovi_outlier_finali = [&](TGraphErrors* graph, TF1* fitFunc, const double threshold) -> bool {
+    bool puntiRimossi = false;
+
+    for (int idx = graph->GetN() - 1; idx >= 0; --idx) {     
+
+        if (graph->GetN() <= 3) break;         
+
+        double x, y;             
+        graph->GetPoint(idx, x, y);
+        double y_fit = fitFunc->Eval(x);
+        double ey = graph->GetErrorY(idx);   //riga aggiunta per calcolare residuo in unità di sigma
+        //double residuo = (y - y_fit) / ey;
+        double residuo = y - y_fit;
+
+        if (std::abs(residuo) > threshold) {
+            graph->RemovePoint(idx);
+            puntiRimossi = true;
+        }
+    }
+
+    return puntiRimossi;
+};
+
+
+TGraphErrors* eG_crescente_iniziale = nullptr; 
+TGraphErrors* eG_crescente_post1 = nullptr;
+TGraphErrors* eG_crescente_post2 = nullptr; 
+
+
+if (eG_crescente->GetN() > 2) {
+    TFitResultPtr refitResult = eG_crescente->Fit(eF1, fitopt);   //se non vengono eseguite le iterazioni 1 e 2 l'impulso restituito è quello ottenuto dal grafico eG_crescente
+    if (refitResult->IsValid()) {
+        eP = 1. / TMath::Sqrt(eF1->GetParameter(0));
+
+        // Salva stato prima della prima iterazione, cioè il grafico crescente iniziale:
+        eG_crescente_iniziale = (TGraphErrors*)eG_crescente->Clone("eG_crescente_iniziale");
+
+        const double residuoThreshold_first = 0.2;   
+        const double residuoThreshold_second = 0.2;                                                    
+
+        bool primoRefitRiuscito = false;         
+
+        //std::cout << "[INFO] Inizio prima iterazione rimozione outlier...\n";
+        bool rimossi_1 = rimuovi_outlier_finali(eG_crescente, eF1, residuoThreshold_first);
+
+        bool skipSecondIteration = false;
+
+        if (rimossi_1) {
+            int remainingPoints = eG_crescente->GetN();
+            if (remainingPoints > 2) {
+                refitResult = eG_crescente->Fit(eF1, fitopt);
+                if (refitResult->IsValid()) {
+                    eP = 1. / TMath::Sqrt(eF1->GetParameter(0));
+                    //std::cout << "[INFO] Primo refit riuscito.\n";
+                    primoRefitRiuscito = true;
+                    // Salva stato dopo la prima iterazione:
+                    eG_crescente_post1 = (TGraphErrors*)eG_crescente->Clone("eG_crescente_post1");
+                } else {
+                    //std::cerr << "[WARN] Primo refit fallito.\n";
+                    skipSecondIteration = true;
+                }
+            } else {
+                //std::cerr << "[WARN] Troppi pochi punti (" << remainingPoints << ") dopo prima rimozione. Refitting saltato.\n";
+                //std::cout << "[INFO] Seconda iterazione saltata per numero insufficiente di punti.\n";   
+                skipSecondIteration = true;      
+            }
+        } else { 
+            skipSecondIteration = true;
+        }            
+
+        if (!skipSecondIteration) {
+            //std::cout << "[INFO] Inizio seconda iterazione rimozione outlier...\n";
+            bool rimossi_2 = rimuovi_outlier_finali(eG_crescente, eF1, residuoThreshold_second);
+
+            if (rimossi_2) {
+                int remainingPoints = eG_crescente->GetN();
+                if (remainingPoints > 2) {
+                    refitResult = eG_crescente->Fit(eF1, fitopt);
+                    if (refitResult->IsValid()) {
+                        eP = 1. / TMath::Sqrt(eF1->GetParameter(0));
+                        //std::cout << "[INFO] Secondo refit riuscito.\n";
+
+                        // Salva stato dopo la seconda iterazione:
+                        eG_crescente_post2 = (TGraphErrors*)eG_crescente->Clone("eG_crescente_post2");
+                    } else {
+                        //std::cerr << "[WARN] Secondo refit fallito.\n";
+                    }
+                } else {
+                    //std::cerr << "[WARN] Troppi pochi punti (" << remainingPoints << ") dopo seconda rimozione. Refitting saltato.\n";
+                }
+            }
+        }   //A QUA     
+
+        /*   // Stampa residui finali
+        std::cout << "Residui FINALI dopo due iterazioni per traccia " << trackEvt << ":\n";
+        int finalN = eG_crescente->GetN();
+        for (int i = 0; i < finalN; ++i) {
+            double x, y;
+            eG_crescente->GetPoint(i, x, y);
+            double y_fit = eF1->Eval(x);
+            double residuo = y - y_fit;
+            std::cout << "Punto " << i << ": x = " << x << ", y = " << y << ", y_fit = " << y_fit << ", residuo = " << residuo << "\n";
+        }*/
+
+        /* // Salvataggio file
+        TFile *refitFile = new TFile("MCSgraphs_crescenti_refit.root", "UPDATE");
+        if (refitFile && refitFile->IsOpen()) {
+            eG_crescente->SetName(Form("eG_crescente_track%d", trackEvt));
+            eG_crescente->SetTitle(Form("Refit - Track Evt %d", trackEvt));
+            eG_crescente->Write();
+            refitFile->Close();
+        } else {
+            std::cerr << "Errore apertura file per salvataggio refit.\n";
+        }
+    } else {
+        std::cerr << "[WARN] Fit iniziale fallito per traccia Evt: " << trackEvt << "\n";
+    }*/ 
+
+ //SCOMMENTARE DA QUA
+// Salvataggio file condizionato  
+/*TFile *refitFile = new TFile("MCSgraphs_crescente_refit.root", "UPDATE");      
+if (refitFile && refitFile->IsOpen()) {
+    if (eG_crescente_post2) {
+        //std::cout << "[INFO] Salvando il grafico dopo la seconda iterazione.\n";
+        eG_crescente_post2->SetName(Form("eG_crescente_post2_track%d", trackEvt));
+        eG_crescente_post2->SetTitle(Form("Refit - Track Evt %d (TrackID %d) - Second Iteration", trackEvt, tr.ID()));
+         eG_crescente_post2->Draw("AP"); 
+         gPad->Update();
+         gPad->GetListOfPrimitives()->Write("stats", TObject::kOverwrite);
+        eG_crescente_post2->Write();
+    } else if (eG_crescente_post1) {
+        //std::cout << "[INFO] Salvando il grafico dopo la prima iterazione.\n";
+        eG_crescente_post1->SetName(Form("eG_crescente_post1_track%d", trackEvt));
+        eG_crescente_post1->SetTitle(Form("Refit - Track Evt %d (TrackID %d) - First Iteration", trackEvt, tr.ID()));
+         eG_crescente_post1->Draw("AP");
+        gPad->Update();
+        gPad->GetListOfPrimitives()->Write("stats", TObject::kOverwrite);
+        eG_crescente_post1->Write();
+    } else {              
+        //std::cout << "[INFO] Salvando il grafico crescente iniziale, senza iterazioni.\n";
+        eG_crescente_iniziale->SetName(Form("eG_crescente_track%d", trackEvt));
+        eG_crescente_iniziale->SetTitle(Form("Increasing Graph (Before Iter.) - Track Evt %d (TrackID %d)", trackEvt, tr.ID()));
+        eG_crescente_iniziale->Draw("AP");
+        gPad->Update();
+        gPad->GetListOfPrimitives()->Write("stats", TObject::kOverwrite);   
+        eG_crescente_iniziale->Write();
+    }
+    refitFile->Close();
+} else {       
+    std::cerr << "Errore apertura file per salvataggio refit.\n";
+}        */                                                                                              
+   
+
+    }
+      delete eG_crescente_iniziale; // Libera memoria
+      delete eG_crescente_post1;
+      delete eG_crescente_post2;
+      delete eG_crescente;  
+  
+  
+  }   
+
+           
+else {
+
+    //------------------------------------------------------------
+    // ⬇ NUOVO BLOCCO: ITERAZIONI ANCHE QUANDO eG_crescente NON ESISTE
+    // eG_clone = copia completa del grafico originale
+    TGraphErrors* eG_clone = (TGraphErrors*)eG->Clone("eG_clone");
+
+    TGraphErrors* eG_clone_iniziale = nullptr;
+    TGraphErrors* eG_clone_post1     = nullptr;
+    TGraphErrors* eG_clone_post2     = nullptr;         
+     
+    // Fit iniziale su clone
+    TFitResultPtr refitResult = eG_clone->Fit(eF1, fitopt);
+    if (refitResult->IsValid()) {
+
+        eP = 1. / TMath::Sqrt(eF1->GetParameter(0));  
+
+        eG_clone_iniziale = (TGraphErrors*)eG_clone->Clone("eG_clone_iniziale");
+
+        const double residuoThreshold_first = 0.2;
+        const double residuoThreshold_second = 0.2;                                               
+     
+        bool rimossi_1 = rimuovi_outlier_finali(eG_clone, eF1, residuoThreshold_first);           
+        bool skipSecondIteration = false;
+
+        if (rimossi_1 && eG_clone->GetN() > 2) {
+            refitResult = eG_clone->Fit(eF1, fitopt);
+            if (refitResult->IsValid()) {
+                eP = 1. / TMath::Sqrt(eF1->GetParameter(0));
+                eG_clone_post1 = (TGraphErrors*)eG_clone->Clone("eG_clone_post1");
+            } else skipSecondIteration = true;
+        } else skipSecondIteration = true;
+
+        if (!skipSecondIteration) {
+            bool rimossi_2 = rimuovi_outlier_finali(eG_clone, eF1, residuoThreshold_second);
+            if (rimossi_2 && eG_clone->GetN() > 2) {
+                refitResult = eG_clone->Fit(eF1, fitopt);
+                if (refitResult->IsValid()) {
+                    eP = 1. / TMath::Sqrt(eF1->GetParameter(0));
+                    eG_clone_post2 = (TGraphErrors*)eG_clone->Clone("eG_clone_post2");
+                }
+            }           
+        }
+
+        // SALVATAGGIO FILE
+        
+        /*TFile *refitFile = new TFile("MCSgraphs_crescente_refit.root", "UPDATE");
+        if (refitFile && refitFile->IsOpen()) {
+
+            if (eG_clone_post2) {
+                eG_clone_post2->SetName(Form("eG_clone_post2_track%d", trackEvt));
+                eG_clone_post2->SetTitle(Form("eG_clone_post2 - Track Evt %d (TrackID %d)", trackEvt, tr.ID()));
+                eG_clone_post2->Draw("AP");
+		gPad->Update();
+		gPad->GetListOfPrimitives()->Write("stats", TObject::kOverwrite);
+                eG_clone_post2->Write();
+            }
+            else if (eG_clone_post1) {
+                eG_clone_post1->SetName(Form("eG_clone_post1_track%d", trackEvt));
+                eG_clone_post1->SetTitle(Form("eG_clone_post1 - Track Evt %d (TrackID %d)", trackEvt, tr.ID()));
+                eG_clone_post1->Draw("AP");
+		gPad->Update();
+		gPad->GetListOfPrimitives()->Write("stats", TObject::kOverwrite);
+                eG_clone_post1->Write();           
+            }
+
+            refitFile->Close();
+        }    */  
+
+        delete eG_clone_iniziale;
+        delete eG_clone_post1;
+        delete eG_clone_post2;
+    }
+}
+    
+
+  
+  /*TFitResultPtr eGXResultX = eGX->Fit(eF1X,fitopt);
+  status = eGXResultX;
+  if (status==0) {  */
+    /*std::cout << "Valid Fit" << std::endl;*/
+    /*ePx  = 1./TMath::Sqrt(eF1->GetParameter(0));
+  } else {  */
+    /*std::cout << "Divergent Fit" << std::endl;*/
+    /*ePx = -10;
+  }  */    
+
+  /*TFitResultPtr eGYResultY = eGY->Fit(eF1Y,fitopt);                                   
+  status = eGYResultY;
+  if (status==0) {   */
+    /*std::cout << "Valid Fit" << std::endl;*/
+    /*ePy  = 1./TMath::Sqrt(eF1->GetParameter(0));
+  } else {  */
+    /*std::cout << "Divergent Fit" << std::endl;*/   
+    /*ePy = -10;    
+  }   */
+//}
+
+ 
+  /*eP  = 1./sqrt(eF1->GetParameter(0));
+  ePx = 1./sqrt(eF1X->GetParameter(0));   
+  ePy = 1./sqrt(eF1Y->GetParameter(0));*/
+
+
+
+ // Creazione e salvataggio dei grafici su un file ROOT
+/*TFile *outFile = new TFile("MCSgraphs.root", "UPDATE"); //apre in modalità update
+if (outFile && outFile->IsOpen()) {
+  eG->SetName(Form("eG_track%d", tr.GetSegmentFirst()->MCEvt() ));   //eG->SetName(Form("eG_track%d", tr.ID()));  
+  eG->SetTitle(Form("Track Evt %d (TrackID %d)", tr.GetSegmentFirst()->MCEvt(), tr.ID() ));   //eG->SetTitle(Form("eG_Track%d", tr.ID()));
+
+  //eGX->SetName(Form("eGX_track%d", tr.ID()));
+  // eGY->SetName(Form("eGY_track%d", tr.ID())); 
+  
+  eG->Draw("AP");
+  gPad->Update();
+  gPad->GetListOfPrimitives()->Write("stats", TObject::kOverwrite);   
+      
+  eG->Write();
+  //eGX->Write();                   
+  //eGY->Write();               
+             
+  outFile->Close();   */
+  /*std::cout << "Grafici salvati su MCSgraphs.root" << std::endl;*/
+//} else {      
+  /*std::cerr << "Errore nell'apertura del file ROOT per il salvataggio." << std::endl;*/    
+//}                                            
+                            
+
+return eP;                              
+}             
 
 //________________________________________________________________________________________
 float EdbMomentumEstimator::CellWeight(int npl, int m)
@@ -750,30 +1628,92 @@ TF1 *EdbMomentumEstimator::MCSErrorFunction(const char *name, float x0, float dt
   // err(x) = sqrt(k*x*(1+0.038*log(x/x0))/p**2 + dtx)
 
   //  float k   = 14.64*14.64/x0;
-  // 14.64*14.64/1000/1000 = 0.0002143296  - we need p in GeV
+  // 14.64*14.64/1000/1000 = 0.0002143296  - we need p in GeV 
   // 13.6*13.6/1000/1000   = 0.0001849599  - we need p in GeV
 
 
   return new TF1(name,Form("sqrt(214.3296*x/%f*((1+0.038*log(x/(%f)))**2)/([0])**2+%e)",x0,x0,dtx));
-  // return new TF1(name,Form("sqrt(184.9599*x/%f*((1+0.038*log(x/(%f)))**2)/([0])**2+%e)",x0,x0,dtx));
+  // return new TF1(name,Form("sqrt(184.9599*x/%f*((1+0.038*log(x/(%f)))**2)/([0])**2+%e)",x0,x0,dtx));             
 
   //P is returned in MeV by this function for more convinience, but given in GeV as output.
 }
 
 //________________________________________________________________________________________
-TF1 *EdbMomentumEstimator::MCSCoordErrorFunction(const char *name, float tmean,float x0)
+
+/*TF1 *EdbMomentumEstimator::MCSCoordErrorFunction(const char *name, float tmean,float x0)
 {
   // return the function of the expected position deviation as function of range
   //
   // use the Highland-Lynch-Dahl formula for theta_rms_plane = 13.6 MeV/bcp*z*sqrt(x/x0)  (PDG)
   // so the expected measured position deviation is (1/sqrt(3))*theta_rms_plane + measurement error
-  // log term in HLD formula is neglected
-  
-  
-  return new TF1(name,Form("sqrt(([1])**2+(2./3)*((x*sqrt(1+%f**2))**3)*(0.0136**2)*[0]/%f)",tmean,x0));
+  // log term in HLD formula is neglected  
+       
+
+  return new TF1(name,Form("sqrt(([1])**2+(2./3)*((x*sqrt(1+%f**2))**3)*(0.0136**2)*[0]/%f)",tmean,x0));                 
   
   //P is returned in GeV
-}
+}    */
+
+TF1 *EdbMomentumEstimator::MCSCoordErrorFunction(const char *name)
+{
+  // return the function of the expected position deviation as function of range
+  //
+  // use the Highland-Lynch-Dahl formula for theta_rms_plane = 13.6 MeV/bcp*z*sqrt(x/x0)  (PDG)
+  // so the expected measured position deviation is (1/sqrt(3))*theta_rms_plane + measurement error
+  // log term in HLD formula is neglected  
+       
+
+  return new TF1(name,Form("sqrt(([1])**2+(2./3)*((x*sqrt(1+[2]**2))**3)*(0.0136**2)*[0]/[3])"), 0.0, 1000000.0);                 
+  
+  //P is returned in GeV
+} 
+
+
+
+/*TF1 *EdbMomentumEstimator::MCSCoordErrorFunction(const char *name, float tmean, float x0)
+{
+  // Expected position deviation as function of range (Highland–Lynch–Dahl)
+  // theta_rms_plane = 13.6 MeV/bcp*z*sqrt(x/x0)
+  // position deviation = (1/sqrt(3))*theta_rms_plane + measurement error             
+  // log term neglected
+
+  TString expr = Form(
+    "sqrt( pow([1],2) + (2./3) * pow( x * pow(1 + %g*%g, 0.5) , 3) * pow(0.0136,2) * [0] / %g )",
+    (double)tmean, (double)tmean, (double)x0
+  );
+
+  printf("DEBUG: MCSCoordErrorFunction formula = %s\n", expr.Data());
+
+  return new TF1(name, expr.Data());
+}*/
+
+/*TF1 *EdbMomentumEstimator::MCSCoordErrorFunction(const char *name, float tmean,float x0)
+{
+  // return the function of the expected position deviation as function of range
+  //
+  // use the Highland-Lynch-Dahl formula for theta_rms_plane = 13.6 MeV/bcp*z*sqrt(x/x0)  (PDG)
+  // so the expected measured position deviation is (1/sqrt(3))*theta_rms_plane + measurement error
+  // log term in HLD formula is neglected  
+       
+
+  return new TF1(name,Form("TMath::Sqrt(([1])**2+(2./3)*((x*TMath::Sqrt(1+%f**2))**3)*(0.0136**2)*[0]/%f)",tmean,x0));                 
+  
+  //P is returned in GeV                                                 
+} */       
+
+/*TF1 *EdbMomentumEstimator::MCSCoordErrorFunction(const char *name, float tmean, float x0)
+{
+    TString expr = Form(
+        "sqrt( [1]^2 + (2./3) * ( x * sqrt(1 + (%g)^2) )^3 * (0.0136)^2 * [0] / %g )",
+        tmean, x0
+    );
+
+    printf("DEBUG: MCSCoordErrorFunction formula = %s\n", expr.Data());
+
+    return new TF1(name, expr.Data());
+} */                                                             
+                                                                                                          
+
 
 //______________________________________________________________________________________
 void EdbMomentumEstimator::EstimateMomentumError(float P, int npl, float ang, float &pmin, float &pmax)
@@ -1330,7 +2270,7 @@ int EdbMomentumEstimator::PMSang_base_A(EdbTrackP &tr)
     }
   }
 
-  float dtx = GetDTx(txmean);  // measurements errors parametrization
+  float dtx = GetDTx(txmean);  // measurements errors parametrization     
   dtx*=dtx;
   float dty = GetDTy(txmean);  // measurements errors parametrization
   dty*=dty;

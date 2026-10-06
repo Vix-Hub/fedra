@@ -72,6 +72,9 @@ void set_default(TEnv &cenv)
   cenv.SetValue("trackan.MomEst.DTy","0.0021 0 0");
   cenv.SetValue("trackan.MomEst.X0", 5600);
   cenv.SetValue("trackan.MomEst.M", 0.13957);
+  cenv.SetValue("trackan.MomEst.SigmaRes", 0.15);   // position resolution [um] (coordinate method)
+  cenv.SetValue("trackan.MomEst.Pitch", 1350);      // plate pitch [um] (coordinate method)
+  cenv.SetValue("trackan.MomEst.AddSmear", 0);      // add 0.15 um smearing, for MC (coordinate method)
   cenv.SetValue("trackan.global.trFlag", 0);
   cenv.SetValue("trackan.global.noScale", 0);
 }
@@ -894,6 +897,9 @@ void CheckMom(EdbPVRec &ali, TEnv &cenv)
 		     mes.eAlg=cenv.GetValue("trackan.MomEst.Alg",0);
   mes.eX0=cenv.GetValue("trackan.MomEst.X0",5600);
   mes.eM=cenv.GetValue("trackan.MomEst.M",0.13957);
+  float sigres = cenv.GetValue("trackan.MomEst.SigmaRes", 0.15);
+  int   pitch  = cenv.GetValue("trackan.MomEst.Pitch", 1350);
+  bool  smear  = cenv.GetValue("trackan.MomEst.AddSmear", 0);
   mes.Print();
   //mes.eDTx0=0.001;  mes.eDTx1=0; mes.eDTx2=0;
   //mes.eDTy0=0.001;  mes.eDTy1=0; mes.eDTy2=0;
@@ -904,7 +910,7 @@ void CheckMom(EdbPVRec &ali, TEnv &cenv)
     EdbTrackP *t = ali.GetTrack(i);
     //int nseg = t->N();
     //    Float_t P = mes.PMSang(*t);
-    Float_t P = mes.PMS(*t);
+    Float_t P = (mes.eAlg == 3) ? mes.PMScoordinate(*t, sigres, mes.eX0, pitch, smear) : mes.PMS(*t);
     t->SetP(P);
     fitted_tracks.Add(t);
   }
