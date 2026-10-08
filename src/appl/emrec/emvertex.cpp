@@ -10,6 +10,7 @@
 #include "EdbDisplay.h"
 #include "EdbCombGen.h"
 #include "EdbVertexComb.h"
+#include "EdbMomentumEstimator.h"
 
 #include <TROOT.h>
 
@@ -27,6 +28,12 @@ EdbVertexRec rfEVR;
 bool do_vtxrefit = false;
 float tr_pfit = 1000;
 float tr_mfit = 0.1390;
+bool  tr_pmcs   = false;   // trfit.P = -2: MCS momentum for the split tracks
+float tr_pmin   = 1.;
+float tr_pmax   = 100.;
+float tr_sigres = 0.15;    // as in trackan.rootrc
+int   tr_pitch  = 1350;
+bool  tr_smear  = false;
 int last_trkID = -1;
 
 
@@ -265,6 +272,15 @@ void ReadVertex(EdbID id, TEnv &env)
   tr_pfit   = trenv.GetValue("fedra.track.momentum"     , 1000);
   tr_mfit   = trenv.GetValue("fedra.track.mass"     , 0.1390);
 
+  tr_pmcs   = env.GetValue("emvertex.trfit.P", 10.) < -1.5;
+  tr_pmin   = env.GetValue("emvertex.trfit.Pmin", 1.);
+  tr_pmax   = env.GetValue("emvertex.trfit.Pmax", 100.);
+  TEnv maenv("maenv");
+  maenv.ReadFile("trackan.rootrc", kEnvLocal);
+  tr_sigres = maenv.GetValue("trackan.MomEst.SigmaRes", 0.15);
+  tr_pitch  = maenv.GetValue("trackan.MomEst.Pitch", 1350);
+  tr_smear  = maenv.GetValue("trackan.MomEst.AddSmear", 0);
+
   TObjArray v_out;
   TObjArray v_out2;
   
@@ -488,6 +504,18 @@ bool IsCompatible(EdbVertex &v, EdbTrackP &t, float r2max, float dzmax, float *r
   return false;
 }
 
+// MCS momentum of a split track; parent momentum if no estimate; same limits as the vertex tracks
+float SplitTrackP(EdbTrackP &t, float pparent)
+{
+  static EdbMomentumEstimator *mes = 0;
+  if (!mes) mes = new EdbMomentumEstimator();
+  float p = mes->PMScoordinate(t, tr_sigres, gCond.RadX0(), tr_pitch, tr_smear);
+  if (!(p > 0))       p = pparent;      // no estimate for this half
+  if (!(p > tr_pmin)) p = tr_pmin;
+  if (p > tr_pmax)    p = tr_pmax;
+  return p;
+}
+
 void SplitTrack(EdbTrackP *t, EdbTrackP *&t_in, EdbTrackP *&t_out, Float_t zsplit)
 {
   EdbSegP *sbest = (EdbSegP *) t->GetSegmentWithClosestZ(zsplit, 5000);
@@ -504,7 +532,10 @@ void SplitTrack(EdbTrackP *t, EdbTrackP *&t_in, EdbTrackP *&t_out, Float_t zspli
   Log(3, "SplitTrack", "Track found is %d, print follows", t->ID());
   if (gEDBDEBUGLEVEL == 3) t->PrintNice();
   //SetSegmentsP(t_in, tr_pfit);
-  t_in->SetP(tr_pfit);
+  t_in->SetCounters();                                               // needed by the estimator
+  float p_in = tr_pmcs ? SplitTrackP(*t_in, t->P()) : tr_pfit;
+  if (tr_pmcs) t_in->SetSegmentsP(p_in);
+  t_in->SetP(p_in);
   t_in->SetM(tr_mfit);
   t_in->SetCounters();
   t_in->SetMC(t->MCEvt(), t->MCTrack());
@@ -512,11 +543,15 @@ void SplitTrack(EdbTrackP *t, EdbTrackP *&t_in, EdbTrackP *&t_out, Float_t zspli
   t_in->SetTrack(last_trkID+1);
   t_in->SetSegmentsTrack(last_trkID+1);
   t_in->SetFlag(999999);
-  t_in->FitTrackKFS(false, 3504); // using segments with min Z and W radlen
+  //t_in->FitTrackKFS(false, 3504); // using segments with min Z and W radlen
+  t_in->FitTrackKFS(false, gCond.RadX0());
   if (t_out->N() != 0)
   {
   //SetSegmentsP(t_out, tr_pfit);
-  t_out->SetP(tr_pfit);
+  t_out->SetCounters();
+  float p_out = tr_pmcs ? SplitTrackP(*t_out, t->P()) : tr_pfit;
+  if (tr_pmcs) t_out->SetSegmentsP(p_out);
+  t_out->SetP(p_out);
   t_out->SetM(tr_mfit);
   t_out->SetCounters();
   t_out->SetMC(t->MCEvt(), t->MCTrack());
@@ -524,7 +559,7 @@ void SplitTrack(EdbTrackP *t, EdbTrackP *&t_in, EdbTrackP *&t_out, Float_t zspli
   t_out->SetTrack(last_trkID+2);
   t_out->SetSegmentsTrack(last_trkID+2);
   t_out->SetFlag(999999);
-  t_out->FitTrackKFS(false, 3504);
+  t_out->FitTrackKFS(false, gCond.RadX0());
   last_trkID+=2;
   }
   else {last_trkID+=1;Log(1, "SplitTrack", "Out-track has 0 segments!");}
