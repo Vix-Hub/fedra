@@ -55,6 +55,8 @@ void set_default(TEnv &cenv)
   cenv.SetValue("fedra.track.momentum"  , 2 );
   cenv.SetValue("fedra.track.mass"      , 0.14 );
   cenv.SetValue("fedra.track.do_use_mcs", 0 );
+  cenv.SetValue("fedra.track.ProxyP"     , "(x>=0.295)*1.47*pow(x/0.295,-1.73) + (x<0.295)*1.47*pow(x/0.295,-0.8)"); // do_use_mcs 4: momentum proxy p(theta) [GeV], x = theta [rad]
+  cenv.SetValue("fedra.track.ProxyPRange", "0.1 5000");   // do_use_mcs 4: proxy limited to [min, max] GeV
   cenv.SetValue("fedra.track.RadX0"     , 5810.);
 
   cenv.SetValue("fedra.track.do_track"       , true  );
