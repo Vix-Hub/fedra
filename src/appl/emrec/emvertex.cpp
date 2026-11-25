@@ -632,15 +632,12 @@ void DiscardImp(TEnv &env, EdbPVRec &v_vtx, float imp_max)
     int ntrks = v->N();
     // Make a new EdbVertex object in order to not change the original EdbVertex obj
     EdbVertex *vtx_new = new EdbVertex();
-    vtx_new->SetFlag(v->Flag());
     for(int t=0; t<ntrks;t++){
       EdbVTA *vta = nullptr;
-      if (v->GetVTa(t)->Imp() > imp_max) {
-	      if (v->GetVTa(t)->Zpos()==0) vtx_new->SetFlag(0);
-	      continue;
-      }
+      if (v->GetVTa(t)->Imp() > imp_max) continue;
       vta = rfEVR.AddTrack(*vtx_new, (EdbTrackP*)v->GetTrack(t), v->GetVTa(t)->Zpos());
     }
+    vtx_new->EstimateVertexFlag();
     vtx_new->SetID(v->ID());
     if (rfEVR.MakeV(*vtx_new)) {
       rfEVR.AddVertex(vtx_new);
